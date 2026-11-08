@@ -6,6 +6,17 @@ Living record of what we've built, tried, solved and ruled out. Keep this update
 
 ---
 
+### Decorative UI cleanup (2026-11-07)
+
+- Removed the header hanger badge, footer color bars, diagonal arrow symbols and the `01 /` prefix before Capture. Kept the FittingRoom wordmark and creator credits.
+
+### Showcase polish and look deletion (2026-11-07)
+
+- Removed generation price estimates, result generation costs, completed pipeline details, redundant slogans/captions and customer-facing store import tools. Store imports remain automatic from environment configuration. Simplified quality labels while retaining options and creator credits.
+- Added an inline Delete/Cancel confirmation to each saved look, readable failure recovery and an empty-library state. Creating looks cannot be deleted. The DELETE endpoint is idempotent; completed/interrupted look folders move out of the library into `data/deleted-looks`, leaving original recordings and other looks intact. Delete and resume share a reservation to prevent concurrent writes from recreating removed looks.
+- Fixed stale garment readiness when changing a product photo. Network failures on results reconnect automatically without clearing the viewer; missing/deleted looks show an unavailable state. The lookbook polls creating looks and refreshes on window focus, while filtering out successful deletions from stale fetches.
+- Validation: TypeScript, production build and all nine Node tests passed, including file preservation and concurrent delete/resume checks. Browser checks passed at desktop, 390px and 320px: full fitting flow, draft recovery, delete confirmation/cancel/failure/retry/persistence, creating-look protection, empty state, generation cost removal and reconnect behavior. A live DELETE/GET/duplicate-delete check passed using a disposable fixture, cleaned afterward. Existing customer looks were not removed; no paid generation was triggered.
+
 ### FittingRoom usability and personality refresh (2026-11-07)
 
 - Kept the coral, blush, mint and sky palette, practical rectangular home cards, guided camera visuals and animated viewer. Added clearer action labels, active navigation and a subtle color signature. Footer and metadata credit **Armin Hatamian** and **Marcu Andriuca**.

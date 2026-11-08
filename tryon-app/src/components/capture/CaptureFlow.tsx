@@ -306,19 +306,19 @@ export function CaptureFlow() {
       <Journey current={1} />
       {stage === "intro" && (
         <>
-          <header className="workspace-heading"><p className="eyebrow">ONE TURN. ALL YOU.</p><h1>Your fitting room.</h1><p>Start with a full-turn video. Then choose your clothes.</p></header>
+          <header className="workspace-heading"><h1>Your fitting room.</h1><p>Start with a full-turn video. Then choose your clothes.</p></header>
           <section className="capture-workspace" aria-label="Start a fitting">
             <div className="workspace-record">
               <button className="workspace-camera" onClick={startCamera} aria-label="Record a turn">
-                <span className="workspace-card-label">01 / CAPTURE</span>
-                <span className="camera-viewfinder" aria-hidden="true"><span className="viewfinder-corners" /><Icon name="camera" width="36" height="36" /><span>Camera preview</span></span>
-                <span className="workspace-card-action"><span>Record a turn<small>We&apos;ll count you in and stop automatically.</small></span><span className="workspace-arrow"><Icon name="arrow" width="21" height="21" /></span></span>
+                <span className="workspace-card-label">CAPTURE</span>
+                <span className="camera-viewfinder" aria-hidden="true"><span className="viewfinder-corners" /><Icon name="camera" width="36" height="36" /></span>
+                <span className="workspace-card-action"><span>Record a turn</span><span className="workspace-arrow"><Icon name="arrow" width="21" height="21" /></span></span>
               </button>
-              <button className="workspace-settings" onClick={() => setStage("sound")}>Camera &amp; sound settings <span aria-hidden="true">↗</span></button>
+              <button className="workspace-settings" onClick={() => setStage("sound")}>Camera &amp; sound settings</button>
             </div>
             <div className="workspace-alternatives">
               <Link href="/new?chooseRecording=1" className="workspace-tile upload-tile"><span className="workspace-tile-top"><Icon name="upload" width="24" height="24" /><Icon name="arrow" width="18" height="18" /></span><span><strong>Use a recording</strong><small>Upload a video or choose a saved one.</small></span></Link>
-              <Link href="/runs" className="workspace-tile looks-tile"><span className="workspace-tile-top"><Icon name="hanger" width="24" height="24" /><Icon name="arrow" width="18" height="18" /></span><span><strong>My looks</strong><small>Pick up where you left off.</small></span></Link>
+              <Link href="/runs" className="workspace-tile looks-tile"><span className="workspace-tile-top"><Icon name="hanger" width="24" height="24" /><Icon name="arrow" width="18" height="18" /></span><span><strong>My looks</strong></span></Link>
             </div>
           </section>
           <details className="capture-instructions"><summary>Recording tips</summary><ol>

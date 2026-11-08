@@ -1,5 +1,5 @@
 import "server-only";
-import { readdir } from "node:fs/promises";
+import { readdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { framesToVideo, sideBySide, trimWholeSeconds } from "./ffmpeg";
 import { localModels } from "./localModels";
@@ -192,21 +192,37 @@ async function execute(s: RunState, videoFile: string) {
 /** Resume a failed/interrupted run from where it stopped (finished work is reused, not re-billed). */
 export async function resumeRun(id: string): Promise<Run> {
   if (!isSafeId(id)) throw new Error("bad id");
-  const run = await readJson<Run>(runFile(id));
-  if (!run) throw new Error("run not found");
-  const invalid = outfitError(getCatalogProduct(run.input.top), getCatalogProduct(run.input.bottom));
-  if (invalid) throw new Error(invalid);
   if (active.has(id)) throw new Error("run is already running");
-  if (run.status === "done") throw new Error("run already finished");
-  const video = await getVideo(run.input.videoId);
-  if (!video) throw new Error("video not found");
-  for (const st of Object.values(run.steps)) if (st.status === "error" || st.status === "running") { st.status = "pending"; delete st.detail; }
-  run.status = "running";
-  delete run.error;
-  await writeJson(runFile(id), run);
   active.add(id);
-  void execute(new RunState(run), video.file).finally(() => active.delete(id));
-  return run;
+  let executing = false;
+  try {
+    const run = await readJson<Run>(runFile(id));
+    if (!run) throw new Error("run not found");
+    const invalid = outfitError(getCatalogProduct(run.input.top), getCatalogProduct(run.input.bottom));
+    if (invalid) throw new Error(invalid);
+    if (run.status === "done") throw new Error("run already finished");
+    const video = await getVideo(run.input.videoId);
+    if (!video) throw new Error("video not found");
+    for (const st of Object.values(run.steps)) if (st.status === "error" || st.status === "running") { st.status = "pending"; delete st.detail; }
+    run.status = "running";
+    delete run.error;
+    await writeJson(runFile(id), run);
+    executing = true;
+    void execute(new RunState(run), video.file).finally(() => active.delete(id));
+    return run;
+  } finally { if (!executing) active.delete(id); }
+}
+
+export async function deleteRun(id: string): Promise<"deleted" | "missing" | "busy"> {
+  if (!isSafeId(id)) return "missing";
+  if (active.has(id)) return "busy";
+  active.add(id);
+  try {
+    if (!await readJson<Run>(runFile(id))) return "missing";
+    const trash = await ensureDir(path.join(paths.root, "deleted-looks"));
+    await rename(path.join(paths.runs, id), path.join(trash, `${id}-${newId("deleted")}`));
+    return "deleted";
+  } finally { active.delete(id); }
 }
 
 const angDist = (a: number, b: number) => Math.min(Math.abs(a - b) % 360, 360 - (Math.abs(a - b) % 360));

@@ -19,21 +19,24 @@ export function RunView() {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [pollVersion, setPollVersion] = useState(0);
+  const loadedId = useRef<string | null>(null);
   useEffect(() => {
+    if (loadedId.current !== id) { setRun(null); setError(null); loadedId.current = id; }
     const abort = new AbortController(); let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
         const response = await fetch(`/api/runs/${id}`, { signal: abort.signal }); const data = await response.json();
+        if (response.status === 404) { if (!abort.signal.aborted) { setRun(null); setError("This look is no longer available."); } return; }
         if (!response.ok) throw new Error(data.error ?? "We couldn’t load this look.");
         if (abort.signal.aborted) return;
         setError(null); setRun(data);
         if (data.status === "running") timer = setTimeout(poll, 1500);
-      } catch (e) { if (!abort.signal.aborted) setError((e as Error).message); }
+      } catch { if (!abort.signal.aborted) { setError("Connection interrupted. Reconnecting…"); timer = setTimeout(poll, 3000); } }
     };
     void poll(); return () => { abort.abort(); clearTimeout(timer); };
   }, [id, pollVersion]);
 
-  if (error) return <div className="page-shell"><p className="notice error mt-8" role="alert">{error}</p><Link href="/runs" className="fr-button mt-5">Back to my looks</Link></div>;
+  if (error && !run) return <div className="page-shell"><p className="notice error mt-8" role="alert">{error}</p><Link href="/runs" className="fr-button mt-5">Back to my looks</Link></div>;
   if (!run) return <div className="empty-state" role="status"><Icon name="hanger" /><p>Loading your look…</p></div>;
   const mediaReady = run.steps.framing.status === "done" || run.steps.framing.status === "skipped";
   const signature = JSON.stringify(mediaReady ? run.frames.filter((f) => f.finalUrl).map((f) => ({ url: f.finalUrl!, origUrl: f.sourceUrl, angle: f.angle })) : []);
@@ -46,9 +49,10 @@ export function RunView() {
   })}</ol>;
   return <div className="results-shell flex flex-col gap-6">
     <Journey current={3} />
-    <header className="look-heading"><div><p className="eyebrow">MADE OF YOUR CHOICES.</p><h1>{run.status === "done" ? "Now that’s your look." : videoFailed ? "Your outfit is ready." : run.status === "running" ? "Putting your look together." : "Let’s finish your look."}</h1><p>{run.status === "done" ? "Turn it around. See how it moves." : videoFailed ? "The 360° view is ready. Your video needs another try." : active ? `${LABELS[active]}… You can leave this page; your fitting will keep running.` : "Your finished images are saved. Continue from the last step."}</p></div><span className={`status-pill ${failed ? "needs-retry" : ""}`}>{run.status === "done" ? "Ready" : failed ? "Paused" : "Creating"}</span></header>
-    {run.status === "done" ? <details className="completion-details"><summary>Fitting details · ${(run.cost.openaiUsd + run.cost.geminiUsd).toFixed(2)} generation cost</summary>{progress}</details> : progress}
-    {failed && <div className="retry-panel"><div><strong>{videoFailed ? "Keep your look. Finish the video." : "Pick up where you left off."}</strong><p>Completed steps will be reused.</p>{run.error && <details><summary>What happened?</summary><p>{run.error}</p></details>}</div><button className="fr-button primary" disabled={retrying} onClick={async () => {
+    {error && <p className="notice" role="status">{error}</p>}
+    <header className="look-heading"><div><h1>{run.status === "done" ? "Now that’s your look." : videoFailed ? "Your outfit is ready." : run.status === "running" ? "Putting your look together." : "Let’s finish your look."}</h1><p>{run.status === "done" ? null : videoFailed ? "The 360° view is ready. Your video needs another try." : active ? `${LABELS[active]}… You can leave this page; your fitting will keep running.` : "Your finished images are saved. Continue from the last step."}</p></div><span className={`status-pill ${failed ? "needs-retry" : ""}`}>{run.status === "done" ? "Ready" : failed ? "Paused" : "Creating"}</span></header>
+    {run.status !== "done" && progress}
+    {failed && <div className="retry-panel"><div><strong>{videoFailed ? "Keep your look. Finish the video." : "Pick up where you left off."}</strong><p>Completed steps will be reused.</p></div><button className="fr-button primary" disabled={retrying} onClick={async () => {
       setRetrying(true); setRetryError(null);
       try { const response = await fetch(`/api/runs/${run.id}/resume`, { method: "POST" }); const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Couldn’t resume this look."); setRun(data); setPollVersion((n) => n + 1); setRetrying(false); }
       catch (e) { setRetryError((e as Error).message); setRetrying(false); }
@@ -71,6 +75,6 @@ function LookMedia({ signature, run }: { signature: string; run: Run }) {
   return <section className="look-media" aria-label="Your outfit preview"><div className="media-tabs" role="tablist" aria-label="Preview type" onKeyDown={(e) => { if (videoReady && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const next = e.key === "Home" ? "spin" : e.key === "End" ? "video" : tab === "spin" ? "video" : "spin"; setTab(next); document.getElementById(`${next}-tab`)?.focus(); } }}><button id="spin-tab" role="tab" tabIndex={tab === "spin" ? 0 : -1} aria-selected={tab === "spin"} aria-controls="spin-panel" onClick={() => setTab("spin")}>360° view</button><button id="video-tab" role="tab" tabIndex={tab === "video" ? 0 : -1} aria-selected={tab === "video"} aria-controls="video-panel" disabled={!videoReady} onClick={() => setTab("video")}>Smooth video{!videoReady ? run.steps.omni.status === "error" ? " · retry needed" : run.steps.omni.status === "skipped" ? " · not included" : " · creating" : ""}</button></div>
     <div className="result-stage" id="spin-panel" role="tabpanel" aria-labelledby="spin-tab" hidden={tab !== "spin"}><Viewer360 key={signature} frames={frames} active={tab === "spin"} /></div>
     <div className="result-stage video-panel" id="video-panel" role="tabpanel" aria-labelledby="video-tab" hidden={tab !== "video"}>{run.outputs.omniUrl && <video ref={videoRef} src={run.outputs.omniUrl} controls loop muted playsInline className="look-video" />}</div>
-    <div className="media-downloads">{tab === "video" && run.outputs.omniUrl ? <a href={run.outputs.omniUrl} download className="text-link">Download smooth video ↓</a> : run.outputs.spinUrl ? <a href={run.outputs.spinUrl} download className="text-link">Download 360° video ↓</a> : <span className="muted text-xs">Drag or use the arrow keys to rotate.</span>}{tab === "video" && run.outputs.omniCompareUrl && <a href={run.outputs.omniCompareUrl} target="_blank" rel="noreferrer" className="text-link">Compare with original ↗</a>}</div>
+    <div className="media-downloads">{tab === "video" && run.outputs.omniUrl ? <a href={run.outputs.omniUrl} download className="text-link">Download smooth video ↓</a> : run.outputs.spinUrl ? <a href={run.outputs.spinUrl} download className="text-link">Download 360° video ↓</a> : null}{tab === "video" && run.outputs.omniCompareUrl && <a href={run.outputs.omniCompareUrl} target="_blank" rel="noreferrer" className="text-link">Compare with original</a>}</div>
   </section>;
 }

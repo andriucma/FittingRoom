@@ -30,7 +30,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--coral-dark); }
 .skip-link:focus { clip-path: none; width: auto; height: auto; }
 .site-header { height: 92px; max-width: 1344px; margin: auto; width: 100%; padding: 0 48px; display: flex; align-items: center; gap: 42px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; font-size: 25px; font-weight: 650; letter-spacing: -1.25px; }
-.brand-mark { width: 36px; height: 36px; display: grid; place-items: center; background: var(--blush); border-radius: 11px; margin-right: 10px; transform: rotate(-6deg); }
 .brand-dot { color: var(--coral-dark); }
 .site-header nav { display: flex; align-items: center; gap: 30px; margin-left: auto; }
 .nav-link { font-size: 13px; color: var(--muted); padding: 10px 0; }
@@ -197,7 +196,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--coral-dark); }
 @media (max-width: 640px) {
   .site-header { height: 76px; padding: 0 20px; gap: 15px; }
   .brand { font-size: 21px; }
-  .brand-mark { width: 30px; height: 30px; margin-right: 7px; }
   .site-header nav { gap: 15px; }
   .site-header .header-action { display: none; }
   .nav-link { font-size: 11px; }
@@ -254,12 +252,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--coral-dark); }
 @media (max-width: 640px) { .suggestion-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .selected-product { align-items: flex-start; gap: 14px; padding: 13px; } .selected-product > img { width: 110px; } }
 /* A quieter shell, a clear next action, and a little FittingRoom character. */
 .nav-link[aria-current="page"] { color: var(--foreground); border-bottom: 2px solid var(--coral); }
-@media (max-width: 360px) { .brand { font-size: 22px; } .brand-mark { width: 30px; height: 30px; margin-right: 7px; } .site-header { gap: 10px; } .site-header nav { gap: 12px; } .nav-link { white-space: nowrap; font-size: 10px; } }
+@media (max-width: 360px) { .brand { font-size: 22px; } .site-header { gap: 10px; } .site-header nav { gap: 12px; } .nav-link { white-space: nowrap; font-size: 10px; } }
 .footer-brand { display: flex; align-items: center; font-size: 16px; font-weight: 650; letter-spacing: -.6px; }
-.palette-signature { display: inline-flex; gap: 3px; margin-left: 13px; }
-.palette-signature i { width: 7px; height: 15px; border-radius: 2px; background: var(--coral); }
-.palette-signature i:nth-child(2) { background: #a5d6c8; height: 11px; }
-.palette-signature i:nth-child(3) { background: #a5cfe6; height: 18px; }
 .creator-credit { font-size: 11px; line-height: 1.8; }
 .creator-credit span { color: var(--foreground); }
 .workspace-heading > .eyebrow { margin: 0 0 12px; }
@@ -363,6 +357,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--coral-dark); }
 .look-next { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 15px; border-top: 1px solid var(--line); }
 @media (max-width: 640px) { .media-tabs { width: 100%; } .media-tabs button { flex: 1; padding-inline: 10px; font-size: 11px; } .look-next { flex-wrap: wrap; } .look-heading .status-pill { margin-top: 10px; } .look-heading h1 { font-size: 30px; } }
 .store-select { display: none; }
+.look-card-link { display: block; }
+.look-card-actions { padding: 0 5px 4px; display: flex; justify-content: flex-end; min-height: 40px; }
+.look-card-link .look-meta { padding-top: 14px; }
+.delete-look { display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; color: var(--muted); padding: 8px 10px; border-radius: 6px; }
+.delete-look:hover { color: var(--coral-dark); background: #fff0ed; }
+.delete-look.confirm { color: var(--coral-dark); background: #fff0ed; }
+.delete-confirm { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; font-size: 11px; }
+.delete-confirm > span { margin-right: auto; }
+.delete-confirm .text-link { font-size: 11px; }
+.page-heading h1:focus { outline: none; }
+@media (max-width: 480px) { .looks-grid { grid-template-columns: 1fr; } }
 .store-tools { display: flex; flex-wrap: wrap; gap: 5px 20px; }
 .store-tools > details[open] { flex-basis: 100%; }
 .store-chips .chip { max-width: 100%; }

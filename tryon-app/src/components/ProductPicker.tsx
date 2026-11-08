@@ -8,9 +8,9 @@ import type { Department, GarmentView, ImportedProduct, ProductSummary, ProductF
 
 const VIEWS: GarmentView[] = ["front", "back", "side", "detail", "other"];
 
-export function ProductPicker({ kind, storeId, department, value, onChange, onSelected, pairWith, onFocused }: {
+export function ProductPicker({ kind, storeId, department, value, onChange, onSelected, pairWith, onFocused, onPreparing }: {
   kind: TryOnKind; storeId: number | null; department: Department; value: number | null;
-  onChange: (id: number | null) => void; onSelected?: (product: ProductSummary) => void; pairWith?: number | null; onFocused?: (id: number) => void;
+  onChange: (id: number | null) => void; onSelected?: (product: ProductSummary) => void; pairWith?: number | null; onFocused?: (id: number) => void; onPreparing?: (id: number) => void;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<ProductSummary[]>([]);
@@ -50,6 +50,7 @@ export function ProductPicker({ kind, storeId, department, value, onChange, onSe
   useEffect(() => {
     if (!value) return;
     const abort = new AbortController();
+    onPreparing?.(value);
     const prepare = async () => {
       try {
         const r = await fetch(`/api/products/${value}`, { signal: abort.signal });
@@ -66,7 +67,7 @@ export function ProductPicker({ kind, storeId, department, value, onChange, onSe
     };
     void prepare();
     return () => abort.abort();
-  }, [value, photoIndex, onFocused]);
+  }, [value, photoIndex, onFocused, onPreparing]);
 
   function clear() { setPhotoIndex(undefined); setFocus(null); onChange(null); }
 
@@ -85,7 +86,7 @@ export function ProductPicker({ kind, storeId, department, value, onChange, onSe
     {error && <p className="notice error mb-4" role="alert">{error}</p>}
     {shown ? <>
       <div className="selected-product"><img src={focus?.productId === value ? focus.focusUrl : shown.images.find((im) => im.index === photoIndex)?.url ?? shown.images.find((im) => im.view === "front")?.url ?? shown.images[0]?.url ?? ""} alt={shown.title} /><div><h3>{shown.title}</h3><p role="status">{focus?.productId === value ? <><Icon name="check" width="14" height="14" /> Garment highlighted</> : error ? "Try another photo or choose a different piece." : "Highlighting your garment…"}</p><button className="text-link" onClick={clear}>Change piece</button></div></div>
-      <details className="photo-settings"><summary>Photo options</summary><p className="mt-2">Choose another view, or correct a photo’s angle.</p><div className="photo-label-grid">{shown.images.map((im) => <div key={im.index}><button className="photo-choice" aria-label={`Highlight photo ${im.index + 1}`} aria-pressed={focus?.index === im.index} onClick={() => setPhotoIndex(im.index)}><img src={focus?.index === im.index ? focus.focusUrl : im.url ?? ""} alt={`${shown.title}, ${im.view} view`} /></button><select aria-label={`Photo ${im.index + 1} angle`} className="field-input" value={im.view} onChange={(e) => void relabel(im.index, e.target.value as GarmentView)}>{VIEWS.map((v) => <option key={v} value={v}>{v}{im.manual && v === im.view ? " ✓" : ""}</option>)}</select></div>)}</div></details>
+      <details className="photo-settings"><summary>Photo options</summary><div className="photo-label-grid">{shown.images.map((im) => <div key={im.index}><button className="photo-choice" aria-label={`Highlight photo ${im.index + 1}`} aria-pressed={focus?.index === im.index} onClick={() => setPhotoIndex(im.index)}><img src={focus?.index === im.index ? focus.focusUrl : im.url ?? ""} alt={`${shown.title}, ${im.view} view`} /></button><select aria-label={`Photo ${im.index + 1} angle`} className="field-input" value={im.view} onChange={(e) => void relabel(im.index, e.target.value as GarmentView)}>{VIEWS.map((v) => <option key={v} value={v}>{v}{im.manual && v === im.view ? " ✓" : ""}</option>)}</select></div>)}</div></details>
     </> : <div className="empty-state"><Icon name="hanger" /><p>{error ? "This piece couldn’t be loaded." : "Loading product photos…"}</p><button className="text-link" onClick={clear}>Choose another piece</button></div>}
   </div>;
 

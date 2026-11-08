@@ -139,3 +139,5 @@ Record a turn or select an existing full-turn recording, choose one top and one 
 The configured store list includes Gymshark, Kith, Alo Yoga, Taylor Stitch and Outdoor Voices. Add Shopify domains to `SHOPIFY_STORE_URLS` in `.env.local`; the outfit picker registers and imports them automatically.
 
 Created by **Armin Hatamian** and **Marcu Andriuca**.
+
+Saved looks can be deleted from **My looks** using the inline confirmation. Creating looks remain protected until they finish. Deletion removes only that look from the library and archives its generated files under `data/deleted-looks`; source recordings remain available for new outfits. Generation costs are kept out of customer-facing screens.
