@@ -51,6 +51,12 @@ class SegmentReq(BaseModel):
     out: str
 
 
+class GarmentReq(BaseModel):
+    image: str
+    prompt: str = Field(min_length=1, max_length=80)
+    out_dir: str
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "data_dir": str(DATA_DIR), "sam3_loaded": segmentation._predictor is not None}
@@ -80,3 +86,14 @@ def normalize(req: FramingReq):
 @app.post("/segment")
 def segment(req: SegmentReq):
     return segmentation.segment_to_file(safe(req.image), req.prompt, safe(req.out))
+
+
+@app.post("/garments/focus")
+def focus_garment(req: GarmentReq):
+    image, out_dir = safe(req.image), safe(req.out_dir)
+    if not image.is_file():
+        raise HTTPException(404, "Product photo not found")
+    try:
+        return segmentation.focus_garment(image, req.prompt, out_dir)
+    except ValueError as e:
+        raise HTTPException(422, str(e))

@@ -48,7 +48,10 @@ export type ProductSummary = {
   price: string | null;
   image: string;
   imageCount: number;
+  matchReason?: string;
 };
+
+export type ProductFocus = { productId: number; index: number; prompt: string; score: number; focusUrl: string; maskUrl: string };
 
 export type ShopperProfile = { department: Department; confidence: number; source: "auto" | "manual" };
 

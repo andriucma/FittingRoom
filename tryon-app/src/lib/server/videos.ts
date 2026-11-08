@@ -26,7 +26,7 @@ export async function verifyVideo(id: string, stepDeg = 30): Promise<VideoCheck>
   const video = await getVideo(id);
   if (!video) throw new Error("video not found");
   const t0 = Date.now();
-  const a = await localModels.extractAngles(video.file, anglesDir(id, stepDeg), stepDeg);
+  const a = await cachedAngles(id, stepDeg) ?? await localModels.extractAngles(video.file, anglesDir(id, stepDeg), stepDeg);
   const issues: string[] = [];
   if (a.total_rotation_deg < MIN_TURN_DEG) {
     issues.push(`You turned about ${Math.round(a.total_rotation_deg)}°; we need a full turn (at least ${MIN_TURN_DEG}°). Keep turning until you face the camera again.`);
@@ -42,7 +42,7 @@ export async function verifyVideo(id: string, stepDeg = 30): Promise<VideoCheck>
   await writeJson(path.join(paths.videos, id, "check.json"), check);
   // Default catalog department from the front (0°) frame; best effort, never blocks verification.
   const front = a.selected.find((s) => s.target_deg === 0)?.file ?? a.selected[0]?.file;
-  if (front) await detectProfile(id, front).catch(() => null);
+  if (front && !video.profile) await detectProfile(id, front).catch(() => null);
   return check;
 }
 

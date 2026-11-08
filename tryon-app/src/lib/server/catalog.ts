@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { config } from "./config";
+import { displayStoreName } from "@/lib/presentation";
 import { balancedSample } from "./catalogSampling";
 import { tagProduct } from "./decisions";
 import { pool } from "./tryon";
@@ -257,7 +258,7 @@ type StoreRow = { id: number; domain: string; api_base: string; name: string | n
   sampled: number; tagged: number; tag_cost_usd: number; error: string | null; created_at: string; updated_at: string };
 
 function toStore(r: StoreRow): Store {
-  return { id: r.id, domain: r.domain, apiBase: r.api_base, name: r.name ?? r.domain, status: r.status as Store["status"],
+  return { id: r.id, domain: r.domain, apiBase: r.api_base, name: displayStoreName(r.name, r.domain), status: r.status as Store["status"],
     totalProducts: r.total_products, sampled: r.sampled, tagged: r.tagged, tagCostUsd: r.tag_cost_usd, error: r.error,
     createdAt: r.created_at, processing: jobs.has(r.id) };
 }
@@ -291,14 +292,14 @@ export function searchCatalog(opts: { storeId?: number; q?: string; kind: TryOnK
     where.push("products_fts MATCH ?");
     args.push(terms.map((t) => `"${t}"*`).join(" "));
   }
-  const rows = db().prepare(`SELECT p.*, s.name AS store_name FROM ${from} JOIN stores s ON s.id = p.store_id
+  const rows = db().prepare(`SELECT p.*, s.name AS store_name, s.domain AS store_domain FROM ${from} JOIN stores s ON s.id = p.store_id
     WHERE ${where.join(" AND ")} ORDER BY ${terms.length ? "bm25(products_fts)," : ""} p.available DESC, p.id LIMIT ?`)
-    .all(...args, opts.limit ?? 60) as (ProductRow & { store_name: string })[];
+    .all(...args, opts.limit ?? 60) as (ProductRow & { store_name: string | null; store_domain: string })[];
   return rows.map((r) => {
     const images = JSON.parse(r.images) as CatalogImage[];
     const front = images.find((i) => i.view === "front" && (i.clean ?? 0) >= 0.5) ?? images.find((i) => i.view === "front") ?? images[0];
     return {
-      id: r.id, storeId: r.store_id, storeName: r.store_name, handle: r.handle, title: r.title, productType: r.product_type,
+      id: r.id, storeId: r.store_id, storeName: displayStoreName(r.store_name, r.store_domain), handle: r.handle, title: r.title, productType: r.product_type,
       kind: opts.kind, department: r.department, category: r.category, color: r.color, fit: r.fit,
       price: r.price_min != null ? r.price_min.toFixed(2) : null, image: `${front.src}?width=400`, imageCount: images.length,
     };

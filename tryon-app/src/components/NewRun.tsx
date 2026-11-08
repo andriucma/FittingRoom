@@ -1,28 +1,38 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ProductPicker } from "./ProductPicker";
 import { StoreBar } from "./StoreBar";
-import { VideoPicker } from "./VideoPicker";
+import { VideoPicker, recordingName } from "./VideoPicker";
 import { Icon } from "./Icon";
 import { Journey } from "./Journey";
 import type { Background, Department, ProductSummary, RunInput, VideoAsset } from "@/lib/types";
 
 const FRAME_COST = 0.072;
 const OMNI_PER_S = { "360p": 0.023, "720p": 0.07, "1080p": 0.104 } as const;
-const STEPS = ["Your recording", "Pick a top", "Pick your bottoms", "The final touches"];
-const DESCRIPTIONS = ["A little turn is all we need to get started.", "Find a piece that feels like you.", "Bring your outfit together with the perfect pair.", "One last look, then let’s make it yours."];
+const TITLES = ["Choose your recording", "Choose a top", "Choose bottoms", "Ready for your fitting?"];
+const NOTES = ["A full turn is all we need.", "One top or jacket. Pick the piece you want to try.", "Choose one pair to finish the outfit. Suggested matches are below.", "Check the pieces in your outfit, then choose a background."];
+const DRAFT_KEY = "fittingroom:outfit:v1";
+type Draft = { videoId: string | null; top: ProductSummary | null; bottom: ProductSummary | null; step: number; storeId: number | null; department: Department; background: Background; stepDeg: number; model: string; resolution: "360p" | "720p" | "1080p" };
 
 export function NewRun() {
   const router = useRouter();
-  const initialVideo = useSearchParams().get("video");
+  const params = useSearchParams();
+  const initialVideo = params.get("video");
+  const fresh = params.get("fresh");
+  const choosingRecording = params.has("chooseRecording");
   const [videoId, setVideoId] = useState<string | null>(initialVideo);
+  const [recording, setRecording] = useState<VideoAsset | null>(null);
+  const [checkingVideo, setCheckingVideo] = useState(false);
   const [step, setStep] = useState(initialVideo ? 1 : 0);
-  const [top, setTop] = useState<number | null>(null);
-  const [bottom, setBottom] = useState<number | null>(null);
   const [topSummary, setTopSummary] = useState<ProductSummary | null>(null);
   const [bottomSummary, setBottomSummary] = useState<ProductSummary | null>(null);
+  const top = topSummary?.id ?? null;
+  const bottom = bottomSummary?.id ?? null;
+  const [focused, setFocused] = useState<Set<number>>(new Set());
+  const onFocused = useCallback((id: number) => setFocused((current) => new Set(current).add(id)), []);
   const [storeId, setStoreId] = useState<number | null>(null);
   const [department, setDepartment] = useState<Department>("all");
   const [background, setBackground] = useState<Background>("original");
@@ -30,72 +40,123 @@ export function NewRun() {
   const [model, setModel] = useState("gpt-image-2.6-flare");
   const [resolution, setResolution] = useState<"360p" | "720p" | "1080p">("720p");
   const [starting, setStarting] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [step]);
   useEffect(() => {
-    if (!videoId) return;
     const abort = new AbortController();
-    fetch("/api/videos", { signal: abort.signal }).then((r) => r.json()).then((d) => {
-      const v = (d.videos as VideoAsset[]).find((x) => x.id === videoId);
-      if (v?.profile) setDepartment(v.profile.department);
-    }).catch(() => {});
+    const restore = async () => {
+      setHydrated(false); setStarting(false); setError(null); setFocused(new Set());
+      try {
+        const response = await fetch("/api/videos", { signal: abort.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Your recordings couldn’t load. Please try again.");
+        let draft: Draft | null = null;
+        try { draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null"); } catch {}
+        if (fresh && sessionStorage.getItem("fittingroom:last-outfit") !== fresh) {
+          draft = null;
+          sessionStorage.removeItem(DRAFT_KEY);
+          sessionStorage.setItem("fittingroom:last-outfit", fresh);
+        }
+        if (initialVideo && draft?.videoId !== initialVideo) draft = null;
+        const id = initialVideo ?? draft?.videoId ?? null;
+        const video = (data.videos as VideoAsset[]).find((v) => v.id === id) ?? null;
+        if (abort.signal.aborted) return;
+        setVideoId(video?.id ?? null); setRecording(video);
+        setDepartment(draft?.department ?? video?.profile?.department ?? "all");
+        if (draft && video) {
+          setTopSummary(draft.top); setBottomSummary(draft.bottom);
+          setStoreId(draft.storeId); setBackground(draft.background === "studio" ? "studio" : "original");
+          setStepDeg([20, 30, 45, 60].includes(draft.stepDeg) ? draft.stepDeg : 30);
+          setModel(draft.model === "gpt-image-2.6-sunburst" ? draft.model : "gpt-image-2.6-flare");
+          setResolution(["360p", "720p", "1080p"].includes(draft.resolution) ? draft.resolution : "720p");
+          setStep(video.check?.ok ? Math.max(1, Math.min(Number.isInteger(draft.step) ? draft.step : 1, draft.top ? draft.bottom ? 3 : 2 : 1)) : 0);
+          for (const product of [draft.top, draft.bottom]) {
+            if (!product?.id) continue;
+            void fetch(`/api/products/${product.id}/focus`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: abort.signal })
+              .then(async (r) => { if (!r.ok) throw new Error("A saved piece couldn’t be prepared. Select it in your outfit to choose another photo or piece."); if (!abort.signal.aborted) onFocused(product.id); }).catch((e) => { if (!abort.signal.aborted) setError(e.message); });
+          }
+        } else {
+          setTopSummary(null); setBottomSummary(null); setStoreId(null);
+          setBackground("original"); setStepDeg(30); setModel("gpt-image-2.6-flare"); setResolution("720p");
+          setStep(video?.check?.ok ? 1 : 0);
+        }
+        if (choosingRecording) setStep(0);
+      } catch (e) { if (!abort.signal.aborted) { setError((e as Error).message); setStep(0); } }
+      finally { if (!abort.signal.aborted) setHydrated(true); }
+    };
+    void restore();
     return () => abort.abort();
-  }, [videoId]);
+  }, [initialVideo, fresh, choosingRecording, onFocused]);
 
+  useEffect(() => {
+    if (!hydrated || starting) return;
+    const draft: Draft = { videoId, top: topSummary, bottom: bottomSummary, step, storeId, department, background, stepDeg, model, resolution };
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch {}
+  }, [hydrated, starting, videoId, topSummary, bottomSummary, step, storeId, department, background, stepDeg, model, resolution]);
+  useEffect(() => { if (hydrated) heading.current?.focus({ preventScroll: false }); }, [step, hydrated]);
+
+  const onVideoReady = useCallback((video: VideoAsset) => {
+    setVideoId(video.id); setRecording(video); setError(null);
+    if (video.profile) setDepartment(video.profile.department);
+  }, []);
   function chooseDepartment(dep: Department) {
     setDepartment(dep);
     if (videoId) void fetch(`/api/videos/${videoId}/profile`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ department: dep }) }).catch(() => {});
   }
+  const videoReady = !!videoId && recording?.id === videoId && !!recording.check?.ok;
+  const topReady = !!top && focused.has(top);
+  const bottomReady = !!bottom && focused.has(bottom);
+  const canContinue = !checkingVideo && (step === 0 ? videoReady : step === 1 ? videoReady && topReady : step === 2 ? videoReady && topReady && bottomReady : videoReady && topReady && bottomReady);
   const frames = Math.ceil(360 / stepDeg);
   const estimate = frames * FRAME_COST * (model.includes("sunburst") ? 1.5 : 1) + (background === "studio" ? 0.12 : 0) + 5 * OMNI_PER_S[resolution];
-  const canVisit = (i: number) => i === 0 || (!!videoId && (i === 1 || (!!top && (i === 2 || !!bottom))));
-  const canContinue = step === 0 ? !!videoId : step === 1 ? !!top : step === 2 ? !!bottom : !!videoId && !!top && !!bottom;
+  const action = starting ? "Starting your fitting…" : checkingVideo ? "Checking recording…" : step === 0 ? "Use this recording" : step === 1 ? "Use this top" : step === 2 ? "Review outfit" : !topReady || !bottomReady ? "Preparing outfit…" : "Create my look";
+  const hint = step === 0 && !videoReady && !checkingVideo ? "Choose a recording to continue." : step === 1 && !top ? "Choose one top to continue." : step === 2 && !bottom ? "Choose one pair of bottoms to continue." : null;
 
   async function start() {
-    if (!videoId || !top || !bottom || starting) return;
-    setStarting(true);
-    setError(null);
+    if (!videoId || !top || !bottom || !canContinue || starting) return;
+    setStarting(true); setError(null);
     try {
       const input: RunInput = { videoId, top, bottom, background, stepDeg, model, quality: "medium", omni: { enabled: true, resolution } };
       const res = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "We couldn’t start your fitting. Please try again.");
-      router.push(`/runs/${d.id}`);
-    } catch (e) {
-      setError((e as Error).message);
-      setStarting(false);
-    }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "We couldn’t start your fitting. Please try again.");
+      try { sessionStorage.removeItem(DRAFT_KEY); } catch {}
+      router.push(`/runs/${data.id}`);
+    } catch (e) { setError((e as Error).message); setStarting(false); }
   }
 
   return <div className="page-shell">
     <Journey current={2} />
-    <header className="page-heading"><p className="eyebrow"><Icon name="hanger" width="14" height="14" /> A LITTLE MIX. A LITTLE MATCH.</p><h1>Let&apos;s put a look together.</h1><p>Your favorite stores. Your own style. One piece at a time.</p></header>
-    <div className="fitting-layout">
-      <aside className="fitting-sidebar"><ol aria-label="Outfit steps">{STEPS.map((title, i) => <li key={title}><button disabled={!canVisit(i) || starting} aria-current={step === i ? "step" : undefined} onClick={() => setStep(i)}><span>{i < step ? <Icon name="check" width="12" height="12" /> : `0${i + 1}`}</span><span>{title}</span></button></li>)}</ol><div className="sidebar-note"><Icon name="spin" /><h3>Made to move with you.</h3><p>Every fitting includes a 360° view and a smooth video, so you can see the whole outfit.</p></div></aside>
+    <header className="page-heading outfit-heading"><div><p className="eyebrow">A LITTLE MIX. ALL YOU.</p><h1>Build your outfit.</h1></div><p>One top. One bottom. Your combination.</p></header>
+    {!hydrated ? <div className="empty-state" role="status">Getting your fitting ready…</div> : <div className="fitting-layout">
+      <aside className="outfit-summary" aria-label="Your fitting summary">
+        <div className="summary-recording"><span className="field-label">Your recording</span><p><Icon name="camera" width="15" height="15" />{recording?.id === videoId ? recordingName(recording.name) : "Not selected"}</p>{step !== 0 && <button className="text-link" disabled={starting} onClick={() => { setError(null); setStep(0); }}>Change recording</button>}</div>
+        <h2 className="summary-title">Your outfit <Icon name="hanger" width="17" height="17" /></h2>
+        <div className="summary-pieces">{([topSummary, bottomSummary] as const).map((piece, i) => <button key={i} className={`summary-piece ${step === i + 1 ? "current" : ""}`} disabled={!videoReady || starting || (i === 1 && !topReady)} onClick={() => { setError(null); setStep(i + 1); }} aria-label={i === 0 ? "Edit selected top" : "Edit selected bottoms"} aria-current={step === i + 1 ? "step" : undefined}><span className="summary-piece-image">{piece ? <img src={piece.image} alt="" /> : <Icon name={i === 0 ? "shirt" : "hanger"} width="22" height="22" />}</span><span><small>{i === 0 ? "Top" : "Bottoms"}</small><strong>{piece?.title ?? "Not chosen yet"}</strong>{piece && <em>{piece.storeName}</em>}</span>{piece && (focused.has(piece.id) ? <Icon name="check" width="14" height="14" /> : <span className="preparing-dot" aria-label="Preparing garment" />)}</button>)}</div>
+        {step !== 3 && topReady && bottomReady && <button className="text-link summary-review" disabled={starting} onClick={() => setStep(3)}>Review this outfit →</button>}
+      </aside>
       <section className="fitting-card" aria-labelledby="step-title">
         <div className="fitting-card-body" key={step}>
-          <header className="step-heading"><div><h2 id="step-title" ref={heading} tabIndex={-1}>{STEPS[step]}</h2><p>{DESCRIPTIONS[step]}</p></div><span className="step-tag">{step + 1} of 4</span></header>
-          {step === 0 && <VideoPicker value={videoId} onChange={setVideoId} />}
+          <header className="step-heading"><div><h2 id="step-title" ref={heading} tabIndex={-1}>{TITLES[step]}</h2><p>{NOTES[step]}</p></div><span className="step-tag">{["Recording", "Top", "Bottoms", "Review"][step]}</span></header>
+          {step === 0 && <VideoPicker value={videoId} onChange={setVideoId} onReady={onVideoReady} onBusyChange={setCheckingVideo} />}
           {(step === 1 || step === 2) && <>
-            <div className="selection-meta"><StoreBar value={storeId} onChange={setStoreId} /><div><span className="field-label">Shop for</span><div className="chips">{(["all", "womens", "mens"] as Department[]).map((d) => <button key={d} aria-pressed={department === d} className={`chip ${department === d ? "selected" : ""}`} onClick={() => chooseDepartment(d)}>{d === "mens" ? "Men" : d === "womens" ? "Women" : "Everyone"}</button>)}</div></div></div>
-            <ProductPicker key={step} kind={step === 1 ? "top" : "bottom"} storeId={storeId} department={department} value={step === 1 ? top : bottom} onChange={step === 1 ? setTop : setBottom} onSelected={step === 1 ? setTopSummary : setBottomSummary} />
+            <div className="selection-meta"><StoreBar value={storeId} onChange={setStoreId} /><div><span className="field-label">Department</span><div className="chips">{(["all", "womens", "mens"] as Department[]).map((dep) => <button key={dep} aria-pressed={department === dep} className={`chip ${department === dep ? "selected" : ""}`} onClick={() => chooseDepartment(dep)}>{dep === "mens" ? "Men" : dep === "womens" ? "Women" : "All clothing"}</button>)}</div></div></div>
+            <ProductPicker key={step} kind={step === 1 ? "top" : "bottom"} storeId={storeId} department={department} value={step === 1 ? top : bottom} onChange={(id) => { if (!id) { if (step === 1) setTopSummary(null); else setBottomSummary(null); } }} onSelected={(piece) => { setError(null); if (step === 1) setTopSummary(piece); else setBottomSummary(piece); }} pairWith={step === 1 ? bottom : top} onFocused={onFocused} />
           </>}
           {step === 3 && <>
-            <div className="review-grid">{([topSummary, bottomSummary] as const).map((p, i) => <div className="review-item" key={i}><span className="field-label">{i === 0 ? "Your top" : "Your bottoms"}</span><h3>{p?.title ?? "Selected piece"}</h3><p>{p?.storeName}</p><button className="text-link mt-3" onClick={() => setStep(i + 1)}>Change piece</button></div>)}</div>
-            <span className="field-label">Set the scene</span><div className="background-options">{(["original", "studio"] as Background[]).map((b) => <button className="background-option" key={b} aria-pressed={background === b} onClick={() => setBackground(b)}><span className="mt-0.5">{background === b ? <Icon name="check" width="16" height="16" /> : <Icon name="camera" width="16" height="16" />}</span><span><strong>{b === "original" ? "Keep my space" : "Photo studio"}</strong><small>{b === "original" ? "Your own background, with a steady view." : "A clean backdrop. All eyes on your outfit."}</small></span></button>)}</div>
-            <details className="advanced-settings"><summary>Customize quality & video</summary><div className="advanced-grid"><Field label="Angles"><select className="field-input" value={stepDeg} onChange={(e) => setStepDeg(Number(e.target.value))}>{[20, 30, 45, 60].map((d) => <option key={d} value={d}>{Math.ceil(360 / d)} views · {d}° apart</option>)}</select></Field><Field label="Image detail"><select className="field-input" value={model} onChange={(e) => setModel(e.target.value)}><option value="gpt-image-2.6-flare">Standard · Flare</option><option value="gpt-image-2.6-sunburst">Detailed · Sunburst</option></select></Field><Field label="Smooth video resolution"><select className="field-input" value={resolution} onChange={(e) => setResolution(e.target.value as typeof resolution)}>{["360p", "720p", "1080p"].map((r) => <option key={r}>{r}</option>)}</select></Field></div></details>
-            <p className="price-note"><strong>≈ ${estimate.toFixed(2)}</strong> estimated generation cost<br />Includes your stabilized 360° look and smooth video.</p>
+            <span className="field-label">Background</span><div className="background-options">{(["original", "studio"] as Background[]).map((b) => <button className="background-option" key={b} aria-pressed={background === b} onClick={() => setBackground(b)}><Icon name={background === b ? "check" : "camera"} width="16" height="16" /><span><strong>{b === "original" ? "My original background" : "Photo studio"}</strong><small>{b === "original" ? "Keep the room from your recording." : "Use a clean, softly lit backdrop."}</small></span></button>)}</div>
+            <p className="included-note"><Icon name="check" width="15" height="15" /> 360° view and smooth video included</p>
+            <details className="advanced-settings"><summary>Quality & video settings</summary><div className="advanced-grid"><Field label="Angles"><select className="field-input" value={stepDeg} onChange={(e) => setStepDeg(Number(e.target.value))}>{[20, 30, 45, 60].map((d) => <option key={d} value={d}>{Math.ceil(360 / d)} views · {d}° apart</option>)}</select></Field><Field label="Image detail"><select className="field-input" value={model} onChange={(e) => setModel(e.target.value)}><option value="gpt-image-2.6-flare">Standard · Flare</option><option value="gpt-image-2.6-sunburst">Detailed · Sunburst</option></select></Field><Field label="Smooth video resolution"><select className="field-input" value={resolution} onChange={(e) => setResolution(e.target.value as typeof resolution)}>{["360p", "720p", "1080p"].map((r) => <option key={r}>{r}</option>)}</select></Field></div></details>
+            <div className="price-note"><span>Estimated generation cost</span><strong>≈ ${estimate.toFixed(2)}</strong><small>Actual generation cost may vary.</small></div>
           </>}
           {error && <p role="alert" className="notice error mt-5">{error}</p>}
         </div>
-        <div className="fitting-controls"><button className="text-link" disabled={starting} onClick={() => step === 0 ? router.push("/") : setStep(step - 1)}>← {step === 0 ? "Record instead" : "Back"}</button><button className="fr-button primary" disabled={!canContinue || starting} onClick={() => step === 3 ? void start() : setStep(step + 1)}>{starting ? "Creating your look…" : step === 3 ? "Create my look" : "Continue"}{!starting && <Icon name="arrow" width="16" height="16" />}</button></div>
+        <div className="fitting-controls"><button className="text-link" disabled={starting || checkingVideo} onClick={() => { setError(null); if (step === 0) router.push("/"); else setStep(step - 1); }}>← {step === 0 ? "Record a new turn" : "Back"}</button><div className="next-action">{hint && <span className="next-hint">{hint}</span>}<button className="fr-button primary" disabled={!canContinue || starting} onClick={() => { if (step === 3) void start(); else { setStep(step + 1); if (step === 0 && videoId) router.replace(`/new?video=${encodeURIComponent(videoId)}`, { scroll: false }); } }}>{action}{!starting && !checkingVideo && <Icon name="arrow" width="16" height="16" />}</button></div></div>
       </section>
-    </div>
+    </div>}
   </div>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label><span className="field-label">{label}</span>{children}</label>;
-}
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="field-label">{label}</span>{children}</label>; }

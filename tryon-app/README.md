@@ -56,10 +56,14 @@ browser ──► Next.js 16 (UI + /api route handlers) ──► Python FastAPI
    - A guided flow shows one task at a time: choose a recording → pick a top → pick bottoms → review and create. Arriving from a recording skips to the top selection.
    - Store and department chips filter the product grid. Selections persist when moving backward and forward, and Continue requires a selection for the current step.
    - Photo-angle corrections and quality/video settings are expandable. Both background choices include stabilization and smooth video; the review displays the estimated generation cost.
+   - SAM isolates the chosen garment in its product photo. The picker dims everything else; generation receives a separate neutral-background garment reference, so companion clothing on the store model is excluded. Original photos are kept unchanged. If isolation fails, choose another photo or piece before continuing.
+   - One top/jacket and one bottom are allowed. Duplicate products, swapped slots, clothing sets, and one-piece outfits are rejected by the API as well as the picker. New image prompts replace the original clothes rather than stacking duplicate layers.
+   - Optional pairing suggestions rank compatible pieces using catalog colors and fits, respecting the active store, department, and search filters. They are suggestions rather than mandatory style rules.
 3. **`/runs/:id` Results.**
    - Pipeline: angles (reused from verification) → GPT Image try-on with per-angle product views → SAM 3 alignment (both original and studio backgrounds) → spin video (ends on the 0° frame so it loops) → automatic Gemini Omni video.
    - New runs always include Gemini video at the selected resolution (720p by default), and the displayed estimate includes its cost. Both API keys are required before a run starts. Existing saved runs retain their original Gemini setting when resumed.
    - Failed runs can be resumed without re-paying for finished frames.
+   - Gemini input is retimed to a whole 3–15 seconds at exactly 30 fps, preserving the complete selected turn. The encoded video-stream duration is checked before upload. Retry an existing failed video to reuse its completed outfit frames; newly generated frames use isolated garment references.
 
 ## Stores and catalog
 
@@ -77,7 +81,7 @@ browser ──► Next.js 16 (UI + /api route handlers) ──► Python FastAPI
 - **Automatic stores:** set a comma-separated list in `tryon-app/.env.local`, restart the app, then open **Choose your outfit**:
 
   ```env
-  SHOPIFY_STORE_URLS=https://gymsharkusa.myshopify.com,https://kith.com,https://www.aloyoga.com
+  SHOPIFY_STORE_URLS=https://gymsharkusa.myshopify.com,https://kith.com,https://www.aloyoga.com,https://www.taylorstitch.com,https://www.outdoorvoices.com
   ```
 
   Each store is validated and imported automatically through the same pipeline as **Add store**. Bare domains and collection/product URLs work too. Duplicate hosts and repeated page loads don't start duplicate imports. Ready catalogs are reused; failed/interrupted imports retry once per server process, reusing tagged products. Invalid URLs appear as errors without preventing other stores from importing. Removing a URL from the list does not delete its saved catalog. The older single-store `SHOPIFY_STOREFRONT_URL` setting still works alongside the list. No brands are hardcoded as automatic imports.
@@ -98,12 +102,16 @@ browser ──► Next.js 16 (UI + /api route handlers) ──► Python FastAPI
 | `GET/POST /api/stores` · `GET /api/stores/:id` | list / add (validated, async) / status |
 | `GET /api/products?...` | search the tagged catalog |
 | `GET /api/products/:id` · `PATCH {index, view}` | download photos for try-on · fix a view label |
+| `POST /api/products/:id/focus {index?}` | cached SAM highlight for the chosen photo; clean AI references are prepared separately |
 | `GET/POST /api/videos` · `POST /api/videos/sample` | list / upload (multipart `video`) / sample |
 | `POST /api/videos/:id/verify` · `PUT /api/videos/:id/profile {department}` | full-turn check + department detection · override |
 | `GET/POST /api/runs` · `GET /api/runs/:id` · `POST /api/runs/:id/resume` | runs |
 | `GET /api/files/*` | files under `data/` (Range support) |
 
 ## QA
+
+- `npm test` runs regression checks for video duration/frame counts, preserving the full turn, overlapping/duplicate garment rejection, pairing filters, separate highlight/reference paths and caching, and resuming without regenerating completed images.
+- `python/.venv/bin/python -m unittest discover -s python/tests -p 'test_*.py'` checks exact garment pixel preservation, background removal/dimming, unchanged source files, and failed mask handling.
 
 - FittingRoom uses a light coral, blush, mint, and sky palette with responsive layouts. Live capture overlays, synthesized audio, tracking logic, and the dark drag-to-rotate viewer are preserved. Tailwind runs through PostCSS for both development and production bundlers.
 - `predev`, `predev:next`, `prebuild`, and `prestart` restore the self-hosted browser pose runtime/model if needed, even when dependencies were installed with scripts disabled. The model downloads once; later runs reuse it. Capture startup failures and cancellation release camera tracks and show readable errors.
@@ -123,3 +131,11 @@ browser ──► Next.js 16 (UI + /api route handlers) ──► Python FastAPI
 - **Omni** model access: our key only had `gemini-omni-flash-preview`, not `gemini-omni-1.2-flash`. It took 48–275 s per 5 s clip.
 - **Turbopack HMR** sometimes serves a stale module after big refactors. Touch the file or restart `npm run dev`.
 - **Deployment:** SAM 3 MLX needs Apple Silicon. In production, swap it for a hosted SAM 3 (Roboflow/fal) or a GPU box, and move `data/` and SQLite to cloud storage/DB.
+
+### FittingRoom interface
+
+Record a turn or select an existing full-turn recording, choose one top and one pair of bottoms, then review the background and create your look. Drafts survive a refresh within the same browser tab. The results page separates the interactive 360° view and smooth video into tabs; completed details and individual angle images are expandable.
+
+The configured store list includes Gymshark, Kith, Alo Yoga, Taylor Stitch and Outdoor Voices. Add Shopify domains to `SHOPIFY_STORE_URLS` in `.env.local`; the outfit picker registers and imports them automatically.
+
+Created by **Armin Hatamian** and **Marcu Andriuca**.

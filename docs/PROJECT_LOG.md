@@ -6,6 +6,15 @@ Living record of what we've built, tried, solved and ruled out. Keep this update
 
 ---
 
+### FittingRoom usability and personality refresh (2026-11-07)
+
+- Kept the coral, blush, mint and sky palette, practical rectangular home cards, guided camera visuals and animated viewer. Added clearer action labels, active navigation and a subtle color signature. Footer and metadata credit **Armin Hatamian** and **Marcu Andriuca**.
+- Outfit selection now uses one overall journey and one task at a time, with a compact editable recording/top/bottom summary. Recording, garment highlighting and API errors have explicit next steps; unverified recordings cannot continue. Cached recording analysis is reused.
+- Save selections, filters and quality/background settings in session storage so refreshing recovers the draft. Successful creation clears it. “Try another outfit” keeps the recording and starts a fresh outfit.
+- Results separate the interactive 360° view and smooth video into tabs. Hide completed pipeline details and angle thumbnails until requested, pause inactive media, preserve the viewer during polling, and retry video without reloading the page.
+- Added **Taylor Stitch** (`https://www.taylorstitch.com`) and **Outdoor Voices** (`https://www.outdoorvoices.com`) to the local environment and documented store list. Both live public Shopify catalogs imported successfully and are ready: 175 and 413 tagged products respectively. Existing Kith, Alo Yoga and Gymshark remain available. Display names strip SEO suffixes and use readable brand names.
+- Validation: production build, TypeScript and seven Node pipeline tests passed. Browser camera checks passed with real local browser models and a fake camera, including visible preview, cancellation, model failure and missing-ffmpeg setup errors. Desktop and 390px/320px browser flow checks passed: validation gates, pairings, draft/settings recovery after refresh, creation errors, fresh outfits using the same recording, keyboard-accessible media tabs, paused inactive video, retry without viewer reload, credits and no horizontal overflow. These checks mock paid generation; live APIs separately confirmed searchable Taylor Stitch men’s tops and Outdoor Voices women’s bottoms.
+
 ## 1. Goal & pipeline
 
 - **Goal:** cheap, reliable simulated 360° virtual try-on.
@@ -312,6 +321,14 @@ All try-on runs: `gpt-image-2.6-flare`, `quality=medium`, `864x1536`, no anchor 
 ---
 
 ## 8. Open issues & next steps
+
+### Consistent Gemini input and garment-only references (2026-11-07)
+
+- Fixed the 6.208s-input / 7s-config Gemini rejection. Input preparation now clamps to actual video-stream availability and uniformly retimes the complete selected turn to a whole 3–15 seconds at 30 fps. A final-frame pad only covers frame-grid rounding, and ffprobe validates the output before any upload. Long turns retain their beginning rather than dropping it. Audio/container length cannot hide a shorter video stream.
+- Added SAM garment isolation using the selected listing's category/type to choose the text prompt. Creates separate lossless outputs: a dimmed surrounding scene for the picker, a neutral-background garment-only reference for image generation, and a mask. Original product images and garment foreground pixels are unchanged. Completed highlights are cached and simultaneous requests deduplicated. Failed views can try another photo; generation never silently falls back to the unmasked store model.
+- The picker blocks Continue until the selected garment is isolated, supports highlighting another photo, and shows optional color/fit pairing suggestions in the complementary slot. The current flow enforces exactly one upper and one lower garment; duplicate products, swapped slots, sets, and conflicting one-piece outfits are rejected server-side. Image/video prompts replace the old outfit rather than layering additional garments.
+- Resume preserves completed outfit frames and alignment, including Gemini-only retries. Partial frame failures now stop before producing an incomplete spin and can resume only the missing images. SAM dimming is never applied to generated people or videos; only the reference inputs are isolated.
+- Verification: Node regression tests cover exact duration/frame counts (including 6.208s, short/off-zero/long clips and audio longer than video), selection rules, suggestions, separate cached outputs, and retries. Python tests cover pixel/source preservation and rejected masks. Real SAM tests isolated the bundled tee (0.986) and pants (0.970), preserving all masked garment pixels exactly. Live selection isolated the user's selected Alo pullover (0.922) and returned compatible bottoms. TypeScript, production build, browser flow, and API rejection checks passed. Cloud generation is not part of these local regression checks.
 
 ### GitHub repository preparation (2026-11-07)
 

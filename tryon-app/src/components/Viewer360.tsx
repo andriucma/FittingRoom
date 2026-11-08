@@ -31,12 +31,13 @@ function drawCover(g: CanvasRenderingContext2D, img: HTMLImageElement | null, al
 
 /** Drag-to-rotate 360° viewer: frames placed at their body angle, momentum, seamless loop, crossfade.
  *  Give it a `key` that changes with the frame set; it loads its frames once per mount. */
-export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
+export function Viewer360({ frames, active = true }: { frames: ViewerFrame[]; active?: boolean }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const tryonRef = useRef<HTMLCanvasElement>(null);
   const origRef = useRef<HTMLCanvasElement>(null);
   const seq = useRef<{ deg: number; img: HTMLImageElement; orig: HTMLImageElement | null }[]>([]);
   const state = useRef({ pos: 0, vel: 0, dragging: false, lastX: 0, samples: [] as { x: number; t: number }[] });
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(0);
   const [ready, setReady] = useState(false);
   const [smooth, setSmooth] = useState(true);
@@ -44,9 +45,9 @@ export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
   const [reverse, setReverse] = useState(false);
   const [compare, setCompare] = useState(false);
   const [label, setLabel] = useState("");
-  const opts = useRef({ smooth, auto, reverse, compare });
+  const opts = useRef({ smooth, auto, reverse, compare, active });
   const lastLabel = useRef("");
-  useEffect(() => { opts.current = { smooth, auto, reverse, compare }; }, [smooth, auto, reverse, compare]);
+  useEffect(() => { opts.current = { smooth, auto, reverse, compare, active }; }, [smooth, auto, reverse, compare, active]);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +59,7 @@ export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
       if (cancelled) return;
       seq.current = s.sort((a, b) => a.deg - b.deg);
       setReady(true);
-    });
+    }).catch(() => { if (!cancelled) setLoadError("Some preview images couldn’t load. Refresh the page to try again."); });
     return () => { cancelled = true; };
   }, [frames]);
 
@@ -99,6 +100,7 @@ export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
     const tick = (now: number) => {
       const dt = Math.min(now - last, 50);
       last = now;
+      if (!opts.current.active) { raf = requestAnimationFrame(tick); return; }
       const st = state.current;
       if (!st.dragging) {
         if (Math.abs(st.vel) > 0.002) { st.pos += st.vel * dt; st.vel *= Math.exp(-dt / FRICTION_MS); }
@@ -139,15 +141,15 @@ export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
     st.vel = Math.max(-MAX_FLING, Math.min(MAX_FLING, v));
   };
 
-  const stageCls = "relative aspect-[9/16] h-[70vh] max-w-[45vw] touch-none select-none cursor-grab active:cursor-grabbing";
+  const stageCls = "viewer-frame relative aspect-[9/16] touch-none select-none cursor-grab active:cursor-grabbing";
   const hasOrig = frames.some((f) => f.origUrl);
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="flex gap-4">
-        <div ref={stageRef} className={stageCls} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+      <div className={`viewer-pair ${compare ? "is-comparing" : ""}`}>
+        <div ref={stageRef} className={stageCls} tabIndex={0} role="slider" aria-label="Outfit viewing angle" aria-valuemin={0} aria-valuemax={359} aria-valuenow={(parseInt(label) || 0) % 360} onKeyDown={(e) => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); setAuto(false); state.current.pos += e.key === "ArrowLeft" || e.key === "ArrowDown" ? -30 : 30; } }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
           <canvas ref={tryonRef} className="h-full w-full rounded-xl bg-black" />
           <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-xs">Try-on · {label}</span>
-          {!ready && <div className="absolute inset-0 grid place-items-center text-sm text-zinc-400">Loading {loaded}/{frames.length}…</div>}
+          {!ready && <div className="absolute inset-0 grid place-items-center text-sm text-zinc-400">{loadError ?? `Loading ${loaded}/${frames.length}…`}</div>}
         </div>
         {compare && (
           <div className={stageCls} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
@@ -156,19 +158,15 @@ export function Viewer360({ frames }: { frames: ViewerFrame[] }) {
           </div>
         )}
       </div>
-      <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
-        {([["Smooth", smooth, setSmooth], ["Auto-rotate", auto, setAuto], ["Reverse drag", reverse, setReverse]] as const).map(([name, v, set]) => (
-          <label key={name} className="flex cursor-pointer items-center gap-1.5">
-            <input type="checkbox" checked={v} onChange={(e) => set(e.target.checked)} /> {name}
-          </label>
-        ))}
-        {hasOrig && (
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Show original
-          </label>
-        )}
-        <span>drag to rotate</span>
+      <div className="viewer-main-controls">
+        <label><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto-rotate</label>
+        {hasOrig && <label><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} /> Compare original</label>}
+        <span>Drag to rotate</span>
       </div>
+      <details className="viewer-options"><summary>Playback options</summary><div>
+        <label><input type="checkbox" checked={smooth} onChange={(e) => setSmooth(e.target.checked)} /> Blend between angles</label>
+        <label><input type="checkbox" checked={reverse} onChange={(e) => setReverse(e.target.checked)} /> Reverse drag direction</label>
+      </div></details>
     </div>
   );
 }

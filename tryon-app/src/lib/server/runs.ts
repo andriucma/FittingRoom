@@ -4,12 +4,15 @@ import path from "node:path";
 import { framesToVideo, sideBySide, trimWholeSeconds } from "./ffmpeg";
 import { localModels } from "./localModels";
 import { omniEdit, omniPrompt } from "./omni";
-import { importProduct, referenceViews } from "./shopify";
+import { importProduct } from "./shopify";
+import { isolatedReferenceViews } from "./garmentFocus";
 import { ensureDir, fileUrl, isSafeId, newId, paths, readJson, writeJson } from "./storage";
-import { backgroundPlate, editImage, planFrame, pool, type GarmentRefs } from "./tryon";
+import { backgroundPlate, editImage, planFrame, pool } from "./tryon";
 import { cachedAngles, getVideo } from "./videos";
+import { getCatalogProduct } from "./catalog";
+import { garmentPrompt, outfitError } from "@/lib/outfit";
 import type { AnglesResult } from "./localModels";
-import type { ImportedProduct, Run, RunInput, StepName } from "@/lib/types";
+import type { Run, RunInput, StepName } from "@/lib/types";
 
 /**
  * Pipeline: angles (Python/MediaPipe) -> try-on (OpenAI) -> framing (Python/SAM 3)
@@ -43,23 +46,9 @@ class RunState {
   }
 }
 
-function nounFor(p: ImportedProduct): string {
-  if (/dress|jumpsuit|romper/i.test(p.productType + " " + p.title)) return "dress";
-  const cat = (p.productType.split(">")[2] ?? "").toLowerCase();
-  if (p.kind === "top") return "top";
-  if (cat.includes("short")) return "shorts";
-  if (cat.includes("legging")) return "leggings";
-  if (cat.includes("skirt")) return "skirt";
-  return "pants";
-}
-
-function garment(p: ImportedProduct): GarmentRefs {
-  const views = referenceViews(p);
-  if (!views.front && !views.back && !views.side) throw new Error(`${p.title}: no front/back/side photo found; fix the labels`);
-  return { noun: nounFor(p), views };
-}
-
 export async function startRun(input: RunInput): Promise<Run> {
+  const invalid = outfitError(getCatalogProduct(input.top), getCatalogProduct(input.bottom));
+  if (invalid) throw new Error(invalid);
   const video = await getVideo(input.videoId);
   if (!video) throw new Error("video not found");
   const id = newId("r");
@@ -100,8 +89,13 @@ async function execute(s: RunState, videoFile: string) {
     const todo = s.run.frames.filter((f) => !f.tryon);   // resume: only frames not dressed yet
     await s.step("tryon", { status: "running", detail: "importing products", done: s.run.frames.length - todo.length, total: s.run.frames.length });
     const [top, bottom] = await Promise.all([importProduct(input.top), importProduct(input.bottom)]);
-    const topRefs = garment(top);
-    const bottomRefs = garment(bottom);
+    await s.step("tryon", { detail: "isolating the selected garments from the product photos" });
+    const [topRefs, bottomRefs] = todo.length
+      ? await Promise.all([isolatedReferenceViews(top), isolatedReferenceViews(bottom)])
+      : [
+        { noun: garmentPrompt(getCatalogProduct(input.top)!), views: {} },
+        { noun: garmentPrompt(getCatalogProduct(input.bottom)!), views: {} },
+      ];
     let plate: string | null = null;
     if (input.background !== "original") {
       const bg = await backgroundPlate(input.background, input.model);
@@ -129,6 +123,7 @@ async function execute(s: RunState, videoFile: string) {
     });
     const failed = results.filter((r) => r.status === "rejected").length;
     if (todo.length && failed === todo.length && !s.run.frames.some((f) => f.tryon)) throw new Error((results[0] as PromiseRejectedResult).reason?.message ?? "all frames failed");
+    if (failed) throw new Error(`${failed} outfit frame(s) failed. Retry to finish them; completed frames will be reused.`);
     await s.step("tryon", { status: "done", detail: `${s.run.frames.length - failed}/${s.run.frames.length} frames${failed ? `, ${failed} failed` : ""}` });
     const good = s.run.frames.filter((f) => f.tryon);
 
@@ -199,6 +194,8 @@ export async function resumeRun(id: string): Promise<Run> {
   if (!isSafeId(id)) throw new Error("bad id");
   const run = await readJson<Run>(runFile(id));
   if (!run) throw new Error("run not found");
+  const invalid = outfitError(getCatalogProduct(run.input.top), getCatalogProduct(run.input.bottom));
+  if (invalid) throw new Error(invalid);
   if (active.has(id)) throw new Error("run is already running");
   if (run.status === "done") throw new Error("run already finished");
   const video = await getVideo(run.input.videoId);

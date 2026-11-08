@@ -37,7 +37,7 @@ Keys belong only in `tryon-app/.env.local`. That file is ignored by Git. Both pr
 Add Shopify stores as a comma-separated list:
 
 ```env
-SHOPIFY_STORE_URLS=https://gymsharkusa.myshopify.com,https://kith.com,https://www.aloyoga.com
+SHOPIFY_STORE_URLS=https://gymsharkusa.myshopify.com,https://kith.com,https://www.aloyoga.com,https://www.taylorstitch.com,https://www.outdoorvoices.com
 ```
 
 Restart the app and open the outfit page. Stores are validated, imported, and tagged automatically. Completed catalogs are reused. The public Shopify product feed requires no Shopify API key.

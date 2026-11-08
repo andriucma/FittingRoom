@@ -109,3 +109,30 @@ def segment_to_file(image: Path, prompt: str, out: Path) -> dict:
     ys, xs = np.nonzero(mask)
     return {"found": True, "score": round(score, 3), "mask": str(out),
             "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]}
+
+
+def focus_garment(image: Path, prompt: str, out_dir: Path) -> dict:
+    """Preserve the target garment pixels; create a dimmed UI preview and clean AI reference."""
+    from PIL import ImageEnhance
+
+    img = Image.open(image).convert("RGB")
+    mask, score = segment(img, prompt)
+    if mask is None or not mask.any():
+        raise ValueError(f"Could not identify the {prompt} in this photo. Choose another product photo.")
+    fraction = float(mask.mean())
+    # Reject tiny detail detections or masks covering essentially the entire image.
+    if score < 0.4 or fraction < 0.005 or fraction > 0.95:
+        raise ValueError(f"Could not isolate the {prompt} confidently. Choose another product photo.")
+    if mask.shape != (img.height, img.width):
+        mask = np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize(img.size, Image.NEAREST)) > 0
+    alpha = Image.fromarray(mask.astype(np.uint8) * 255)
+    background = ImageEnhance.Brightness(ImageEnhance.Color(img).enhance(0.15)).enhance(0.22)
+    focused = Image.composite(img, background, alpha)
+    reference = Image.composite(img, Image.new("RGB", img.size, (242, 242, 242)), alpha)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    focused.save(out_dir / "focus.png")
+    reference.save(out_dir / "reference.png")
+    alpha.save(out_dir / "mask.png")
+    return {"score": round(score, 3), "coverage": round(fraction, 4), "prompt": prompt,
+            "focus": str(out_dir / "focus.png"), "reference": str(out_dir / "reference.png"),
+            "mask": str(out_dir / "mask.png")}

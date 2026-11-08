@@ -11,8 +11,8 @@ export async function GET() {
 /** POST RunInput: start the pipeline in the background; poll GET /api/runs/:id. */
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as Partial<RunInput> | null;
-  if (!b?.videoId || !b.top || !b.bottom) {
-    return Response.json({ error: "videoId, top and bottom are required" }, { status: 400 });
+  if (typeof b?.videoId !== "string" || !b.videoId || !Number.isSafeInteger(b.top) || !Number.isSafeInteger(b.bottom) || b.top! <= 0 || b.bottom! <= 0) {
+    return Response.json({ error: "Choose one recording, exactly one top, and exactly one bottom." }, { status: 400 });
   }
   const input: RunInput = {
     videoId: b.videoId,
