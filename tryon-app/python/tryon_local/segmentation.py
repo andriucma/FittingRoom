@@ -92,6 +92,45 @@ _CLIPSEG_ALIASES = {
 }
 
 
+def _clean_mask(mask: np.ndarray) -> np.ndarray:
+    """Turn a raw CLIPSeg threshold map into one solid garment region.
+
+    CLIPSeg returns a coarse per-pixel heatmap; thresholding it leaves ragged edges,
+    scattered background specks and often several blobs (the garment plus same-ish-colored
+    background or the *other* garment). Dressing GPT Image from such a reference is what
+    makes the Windows output change from angle to angle. This fills interior holes and
+    keeps the main garment region plus any other *sizeable* part, while dropping small
+    stray blobs — so the reference is clean and stable without losing, say, the second
+    leg of a wide-leg pant when the two legs are detected as separate blobs.
+
+    CLIPSeg (Windows/Linux) only — SAM 3 (Mac) returns clean instance masks and never
+    passes through here, so its behaviour is unchanged.
+    """
+    from scipy import ndimage
+
+    if not mask.any():
+        return mask
+    structure = np.ones((3, 3), bool)
+    h, w = mask.shape
+    r = max(1, round(0.004 * max(h, w)))               # speck/smoothing scale, relative to image size
+    # Fill interior holes first so prints, buttons or logos don't split the garment.
+    m = ndimage.binary_fill_holes(mask)
+    # Drop small scattered specks (background that weakly matched the prompt).
+    opened = ndimage.binary_opening(m, structure=structure, iterations=r)
+    if opened.any():                                   # but not if the garment itself was thin enough to vanish
+        m = opened
+    # Keep the main region and any other sizeable part (e.g. a separate pant leg),
+    # but remove small stray blobs (background, or the other garment bleeding in).
+    labels, n = ndimage.label(m, structure=structure)
+    if n > 1:
+        counts = np.bincount(labels.ravel())
+        counts[0] = 0                                  # ignore the background label
+        keep = np.flatnonzero(counts >= max(0.12 * int(counts.max()), 0.004 * m.size))
+        m = np.isin(labels, keep)
+    # Fill any holes reopened by component selection.
+    return ndimage.binary_fill_holes(m)
+
+
 def _clipseg_infer(rgb: Image.Image, prompt: str) -> tuple[np.ndarray | None, float, float]:
     """One CLIPSeg pass: (mask | None, peak probability, mask fraction) at full resolution."""
     import torch
@@ -112,6 +151,9 @@ def _clipseg_infer(rgb: Image.Image, prompt: str) -> tuple[np.ndarray | None, fl
     # Threshold relative to the peak so a weak-but-real garment still fills out,
     # without dragging in low-confidence background.
     mask = prob_full >= max(0.40, 0.5 * peak)
+    if not mask.any():
+        return None, 0.0, 0.0
+    mask = _clean_mask(mask)                            # one solid garment region (CLIPSeg path only)
     if not mask.any():
         return None, 0.0, 0.0
     return mask, peak, float(mask.mean())
