@@ -12,12 +12,16 @@ const production = process.argv[2] === "--production";
 const nextArgs = process.argv.slice(production ? 3 : 2);
 nextEnv.loadEnvConfig(root, !production);
 const pyDir = path.join(root, "python");
-const uvicornName = process.platform === "win32" ? "uvicorn.exe" : "uvicorn";
-const uvicorn = path.join(pyDir, ".venv", process.platform === "win32" ? "Scripts" : "bin", uvicornName);
+// Launch uvicorn via `python -m uvicorn` rather than the generated uvicorn.exe/uvicorn shim.
+// The console-script shim bakes in the interpreter's absolute path at creation time, so moving
+// the project folder (OneDrive relocating Documents↔Desktop, etc.) breaks it. The interpreter
+// itself resolves its base install from pyvenv.cfg, so it keeps working after a move.
+const venvBin = path.join(pyDir, ".venv", process.platform === "win32" ? "Scripts" : "bin");
+const pythonBin = path.join(venvBin, process.platform === "win32" ? "python.exe" : "python");
 const dataDir = process.env.TRYON_DATA_DIR ?? path.join(root, "data");
 mkdirSync(dataDir, { recursive: true });
 
-if (!existsSync(uvicorn)) {
+if (!existsSync(pythonBin)) {
   console.error("Python env missing. Run: npm run setup:python");
   process.exit(1);
 }
@@ -58,7 +62,7 @@ const port = Number(process.env.LOCAL_MODELS_PORT) || (await freePort());
 const url = `http://127.0.0.1:${port}`;
 const env = { ...process.env, TRYON_DATA_DIR: dataDir, HF_HUB_DISABLE_XET: "1" };
 
-const py = spawn(uvicorn, ["tryon_local.server:app", "--host", "127.0.0.1", "--port", String(port), "--log-level", "warning"],
+const py = spawn(pythonBin, ["-m", "uvicorn", "tryon_local.server:app", "--host", "127.0.0.1", "--port", String(port), "--log-level", "warning"],
   { cwd: pyDir, env, stdio: ["ignore", "inherit", "inherit"] });
 const children = [py];
 let shuttingDown = false;

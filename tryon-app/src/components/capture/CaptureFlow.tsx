@@ -37,6 +37,7 @@ export function CaptureFlow() {
   const poseRef = useRef<PoseLandmarker | null>(null);
   const synthRef = useRef<FillSynth | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunks = useRef<Blob[]>([]);
   const loop = useRef({ raf: 0, okSince: 0, facingSince: 0, recStart: 0, lastSeen: 0, lastGlugDeg: 0, lastChimeSeg: 0 });
   const tracker = useRef(new TurnTracker());
@@ -60,6 +61,7 @@ export function CaptureFlow() {
   const stopCamera = useCallback(() => {
     cameraSession.current += 1;
     cancelAnimationFrame(loop.current.raf);
+    if (countdownTimer.current) { clearInterval(countdownTimer.current); countdownTimer.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) {
@@ -143,10 +145,12 @@ export function CaptureFlow() {
         synthRef.current?.tick();
       } else {
         clearInterval(id);
+        countdownTimer.current = null;
         synthRef.current?.tick(true);
         startRecording();
       }
     }, 900);
+    countdownTimer.current = id;
   }, [setStage, startRecording]);
 
   // ---------- per-frame analysis ----------
@@ -298,6 +302,32 @@ export function CaptureFlow() {
     setStage("intro");
   }
 
+  // Restart the capture from the framing step WITHOUT tearing the camera down.
+  // Aborts any in-progress recording (discarded, not uploaded) and cancels a running
+  // countdown, then returns to framing. The existing per-frame analysis loop is already
+  // running during the live stages, so it picks up the new stage and the preview keeps
+  // rendering — we deliberately avoid a getUserMedia re-acquire, which can leave the
+  // camera light on but show no video after stopping and re-requesting the stream.
+  function restart() {
+    const rec = recRef.current;
+    if (rec && rec.state !== "inactive") {
+      rec.onstop = null;          // drop the upload-on-stop handler so the partial clip is discarded
+      try { rec.stop(); } catch {}
+    }
+    recRef.current = null;
+    chunks.current = [];
+    if (countdownTimer.current) { clearInterval(countdownTimer.current); countdownTimer.current = null; }
+    synthRef.current?.stopBed();
+    tracker.current = new TurnTracker();
+    Object.assign(loop.current, { okSince: 0, facingSince: 0, recStart: 0, lastGlugDeg: 0, lastChimeSeg: 0 });
+    setDegrees(0);
+    if (streamRef.current && stageRef.current !== "starting") {
+      setStage("framing");        // the running loop transitions to framing; the live stream stays on
+    } else {
+      void startCamera();         // no live stream yet — acquire from scratch
+    }
+  }
+
   const live = ["starting", "framing", "facing", "countdown", "recording"].includes(stage);
   const mirror = facingMode === "user" ? "-scale-x-100" : "";
 
@@ -375,7 +405,7 @@ export function CaptureFlow() {
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={muted} onChange={(e) => { setMuted(e.target.checked); synthRef.current?.setMuted(e.target.checked); }} /> Mute
           </label>
-          <button onClick={reset} className="underline">Cancel</button>
+          <button onClick={restart} className="underline">Restart</button>
         </div>
       </div>
 
