@@ -83,7 +83,7 @@ Then run:
 ```powershell
 git clone https://github.com/andriucma/FittingRoom.git
 cd FittingRoom\tryon-app
-Copy-Item ..\.env.example .env.local
+New-Item -ItemType File .env.local
 npm ci
 py -3.12 -m venv python\.venv
 python\.venv\Scripts\python.exe -m pip install -r python\requirements.txt
