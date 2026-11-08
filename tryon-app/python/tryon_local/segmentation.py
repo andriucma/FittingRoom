@@ -82,30 +82,59 @@ def _segment_mlx(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, floa
     return r.masks[i].astype(bool), float(r.scores[i])
 
 
-def _segment_clipseg(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
+# CLIPSeg understands concrete garment nouns far better than abstract ones like "top".
+# These are tried in addition to the original prompt (CLIPSeg path only); the Mac's SAM 3
+# path and the try-on prompt text are unaffected.
+_CLIPSEG_ALIASES = {
+    "top": ["shirt", "t-shirt"],
+    "pants": ["trousers"],
+    "bottoms": ["trousers"],
+}
+
+
+def _clipseg_infer(rgb: Image.Image, prompt: str) -> tuple[np.ndarray | None, float, float]:
+    """One CLIPSeg pass: (mask | None, peak probability, mask fraction) at full resolution."""
     import torch
 
     processor, model = _clipseg_model()
-    rgb = img.convert("RGB")
     with _lock:
         inputs = processor(text=[prompt], images=[rgb], return_tensors="pt")
         with torch.no_grad():
             logits = model(**inputs).logits            # (H', W') heatmap for the one prompt
         prob = torch.sigmoid(logits).squeeze().to(torch.float32).cpu().numpy()
-    # Upsample the low-res heatmap back to the source resolution.
     prob_full = np.asarray(
         Image.fromarray((np.clip(prob, 0, 1) * 255).astype(np.uint8)).resize(rgb.size, Image.BILINEAR),
         dtype=np.float32,
     ) / 255.0
     peak = float(prob_full.max())
     if peak < 0.40:                                    # nothing matched the prompt with any confidence
-        return None, 0.0
+        return None, 0.0, 0.0
     # Threshold relative to the peak so a weak-but-real garment still fills out,
     # without dragging in low-confidence background.
     mask = prob_full >= max(0.40, 0.5 * peak)
     if not mask.any():
+        return None, 0.0, 0.0
+    return mask, peak, float(mask.mean())
+
+
+def _segment_clipseg(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
+    rgb = img.convert("RGB")
+    candidates = [prompt, *_CLIPSEG_ALIASES.get(prompt.strip().lower(), [])]
+    best: tuple[float, np.ndarray, float] | None = None   # (rank, mask, peak)
+    for p in candidates:
+        mask, peak, frac = _clipseg_infer(rgb, p)
+        if mask is None:
+            continue
+        # Prefer results whose coverage is in the usable band the caller requires.
+        usable = 0.005 <= frac <= 0.95
+        rank = peak + (1.0 if usable else 0.0)
+        if best is None or rank > best[0]:
+            best = (rank, mask, peak)
+        if usable and peak >= 0.60:                   # already good — stop early, save a pass
+            break
+    if best is None:
         return None, 0.0
-    return mask, peak
+    return best[1], best[2]
 
 
 def segment(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
