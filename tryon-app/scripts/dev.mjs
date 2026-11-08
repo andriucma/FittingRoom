@@ -12,7 +12,8 @@ const production = process.argv[2] === "--production";
 const nextArgs = process.argv.slice(production ? 3 : 2);
 nextEnv.loadEnvConfig(root, !production);
 const pyDir = path.join(root, "python");
-const uvicorn = path.join(pyDir, ".venv", "bin", "uvicorn");
+const uvicornName = process.platform === "win32" ? "uvicorn.exe" : "uvicorn";
+const uvicorn = path.join(pyDir, ".venv", process.platform === "win32" ? "Scripts" : "bin", uvicornName);
 const dataDir = process.env.TRYON_DATA_DIR ?? path.join(root, "data");
 mkdirSync(dataDir, { recursive: true });
 
@@ -87,7 +88,7 @@ try {
 }
 if (ready) {
   console.log(`[app] local-models ready at ${url}`);
-  const next = spawn(path.join(root, "node_modules", ".bin", "next"), [production ? "start" : "dev", ...nextArgs],
+  const next = spawn(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), production ? "start" : "dev", ...nextArgs],
     { cwd: root, env: { ...env, LOCAL_MODELS_URL: url }, stdio: "inherit" });
   children.push(next);
   next.on("exit", (code) => shutdown(code ?? 0));
