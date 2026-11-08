@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>360° Try-On</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: #0d0d0f;
+         color: #e9e9ec; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #222; }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0 8px 0 0; }
+  select { background: #1a1a1e; color: inherit; border: 1px solid #333; border-radius: 6px; padding: 5px 8px; font: inherit; }
+  label { display: flex; gap: 6px; align-items: center; color: #aaa; cursor: pointer; user-select: none; }
+  main { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; gap: 16px; padding: 16px; }
+  .stage { position: relative; height: 100%; aspect-ratio: 9 / 16; max-width: 48vw; cursor: grab; touch-action: none; }
+  .stage.dragging { cursor: grabbing; }
+  .stage canvas { width: 100%; height: 100%; display: block; border-radius: 12px; background: #000; }
+  .stage .tag { position: absolute; top: 10px; left: 10px; background: #000a; padding: 2px 8px; border-radius: 4px; font-size: 12px; pointer-events: none; }
+  #orig { display: none; }
+  body.compare #orig { display: block; }
+  footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 16px 12px; color: #888; font-size: 12px; }
+  .dial { flex: 1; max-width: 420px; height: 4px; background: #2a2a2e; border-radius: 2px; position: relative; }
+  .dial i { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #e9e9ec; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; color: #aaa; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>360° Try-On</h1>
+  <select id="run" title="Run"></select>
+  <label><input type="checkbox" id="smooth" checked> Smooth (crossfade)</label>
+  <label><input type="checkbox" id="auto"> Auto-rotate</label>
+  <label><input type="checkbox" id="reverse"> Reverse drag</label>
+  <label><input type="checkbox" id="compare"> Show original</label>
+</header>
+<main>
+  <div class="stage" id="tryonStage"><canvas id="tryon"></canvas><span class="tag">Try-on</span><div id="loading">Loading…</div></div>
+  <div class="stage" id="orig"><canvas id="origCanvas"></canvas><span class="tag">Original</span></div>
+</main>
+<footer>
+  <span id="info">Drag left/right to rotate · ← → keys</span>
+  <div class="dial"><i id="knob"></i></div>
+  <span id="angle"></span>
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const DRAG_TURN = 1.4;      // stage widths of drag = one full 360° turn
+const FRICTION_MS = 320;    // inertia decay time constant
+const AUTO_DEG_PER_S = 40;
+const MAX_FLING = 0.9;      // deg/ms cap on release velocity (~2.5 turns/s)
+
+let all = [];               // [{index, tryon: Image, orig: Image|null, angle}]
+let seq = [];               // frames in use, each with .deg (0..360) — sorted
+let pos = 0;                // current angle in degrees
+let vel = 0;                // deg per ms
+let dragging = false, lastX = 0, samples = [];
+
+// ---------- loading ----------
+async function loadImage(src) {
+  if (!src) return null;
+  // Wait on onload, not img.decode(): decode() can stall indefinitely in hidden tabs.
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = () => reject(new Error(`failed to load ${src}`));
+    img.src = src;
+  });
+  img.decode?.().catch(() => {});   // warm the decode cache when visible; don't block on it
+  return img;
+}
+
+async function loadRuns() {
+  const runs = await (await fetch('/api/runs')).json();
+  const want = new URLSearchParams(location.search).get('run');
+  $('run').innerHTML = runs.map(r => `<option value="${r.name}">${r.name} (${r.frames})</option>`).join('');
+  if (!runs.length) { $('loading').textContent = 'No runs with try-on frames in work/runs'; return; }
+  $('run').value = runs.some(r => r.name === want) ? want : runs[0].name;
+  await loadRun($('run').value);
+}
+
+async function loadRun(name) {
+  $('loading').style.display = 'grid';
+  history.replaceState(null, '', `?run=${encodeURIComponent(name)}`);
+  const run = await (await fetch(`/api/runs/${encodeURIComponent(name)}`)).json();
+  let done = 0;
+  all = await Promise.all(run.frames.map(async f => {
+    const [tryon, orig] = await Promise.all([loadImage(f.tryon), loadImage(f.orig).catch(() => null)]);
+    $('loading').textContent = `Loading ${++done}/${run.frames.length}…`;
+    return { index: f.index, tryon, orig, angle: f.angle };
+  }));
+  const m = run.meta || {};
+  $('info').textContent = [m.model, m.quality, m.anchor_mode === false ? 'no anchor' : m.anchor_mode ? 'anchor' : null]
+    .filter(Boolean).join(' · ') + ' · drag to rotate · ← → keys';
+  $('loading').style.display = 'none';
+  buildSequence();
+}
+
+// ---------- frame sequence (angles) ----------
+function buildSequence() {
+  const hasAngles = all.length && all.every(f => typeof f.angle === 'number');
+  let frames = all;
+  if (hasAngles) {
+    frames = all.map(f => ({ ...f, deg: ((f.angle % 360) + 360) % 360 }));
+  } else {
+    // No pose angles yet: space frames evenly around the turn.
+    frames = frames.map((f, i, a) => ({ ...f, deg: (i * 360) / a.length }));
+  }
+  seq = frames.sort((a, b) => a.deg - b.deg);
+  render();
+}
+
+// ---------- rendering ----------
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  return canvas.getContext('2d');
+}
+function drawCover(g, img, alpha) {
+  if (!img) return;
+  const cw = g.canvas.width, ch = g.canvas.height, s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
+  const w = img.naturalWidth * s, h = img.naturalHeight * s;
+  g.globalAlpha = alpha;
+  g.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+}
+function neighbours() {
+  const p = ((pos % 360) + 360) % 360;
+  let i = seq.findLastIndex(f => f.deg <= p); if (i < 0) i = seq.length - 1;
+  const a = seq[i], b = seq[(i + 1) % seq.length];
+  const span = ((b.deg - a.deg) + 360) % 360 || 360;
+  const t = (((p - a.deg) + 360) % 360) / span;
+  return { a, b, t, p };
+}
+function render() {
+  if (!seq.length) return;
+  const { a, b, t, p } = neighbours();
+  const smooth = $('smooth').checked;
+  for (const [canvas, key] of [[$('tryon'), 'tryon'], [$('origCanvas'), 'orig']]) {
+    if (key === 'orig' && !document.body.classList.contains('compare')) continue;
+    const g = fit(canvas);
+    g.globalAlpha = 1; g.clearRect(0, 0, canvas.width, canvas.height);
+    if (smooth) { drawCover(g, a[key], 1); drawCover(g, b[key], t); }
+    else drawCover(g, (t < 0.5 ? a : b)[key], 1);
+  }
+  $('knob').style.left = `${(p / 360) * 100}%`;
+  $('angle').textContent = `${Math.round(p)}° · frame ${(t < 0.5 ? a : b).index} · ${seq.length}/${all.length} frames`;
+}
+
+// ---------- interaction ----------
+const degPerPx = () => 360 / ($('tryonStage').clientWidth * DRAG_TURN) * ($('reverse').checked ? 1 : -1);
+
+function onDown(e) {
+  dragging = true; vel = 0; lastX = e.clientX; samples = [{ x: e.clientX, t: performance.now() }];
+  e.currentTarget.setPointerCapture(e.pointerId);
+  document.querySelectorAll('.stage').forEach(s => s.classList.add('dragging'));
+}
+function onMove(e) {
+  if (!dragging) return;
+  pos += (e.clientX - lastX) * degPerPx(); lastX = e.clientX;
+  const now = performance.now();
+  samples.push({ x: e.clientX, t: now });
+  while (samples.length > 2 && now - samples[0].t > 80) samples.shift();
+  render();
+}
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  document.querySelectorAll('.stage').forEach(s => s.classList.remove('dragging'));
+  const s0 = samples[0], s1 = samples.at(-1), dt = s1.t - s0.t;
+  vel = dt > 0 && performance.now() - s1.t < 60 ? ((s1.x - s0.x) / dt) * degPerPx() : 0;
+  vel = Math.max(-MAX_FLING, Math.min(MAX_FLING, vel));
+}
+for (const id of ['tryonStage', 'orig']) {
+  const el = $(id);
+  el.addEventListener('pointerdown', onDown);
+  el.addEventListener('pointermove', onMove);
+  el.addEventListener('pointerup', onUp);
+  el.addEventListener('pointercancel', onUp);
+}
+addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' || !seq.length) return;
+  vel = 0;
+  const { a, b, t } = neighbours(), cur = t < 0.5 ? a : b, i = seq.indexOf(cur);
+  pos = seq[(i + (e.key === 'ArrowRight' ? 1 : -1) + seq.length) % seq.length].deg;
+  render();
+});
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(now - last, 50); last = now;
+  if (!dragging) {
+    if (Math.abs(vel) > 0.002) { pos += vel * dt; vel *= Math.exp(-dt / FRICTION_MS); render(); }
+    else if ($('auto').checked) { vel = 0; pos += (AUTO_DEG_PER_S * dt) / 1000; render(); }
+    else vel = 0;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+$('run').onchange = () => loadRun($('run').value);
+$('smooth').onchange = render;
+$('compare').onchange = () => { document.body.classList.toggle('compare', $('compare').checked); requestAnimationFrame(render); };
+addEventListener('resize', render);
+loadRuns();
+</script>
+</body>
+</html>

@@ -1,0 +1,2328 @@
+# Images
+
+> For the complete documentation index, see [llms.txt](/llms.txt). Markdown versions of documentation pages are available by appending `.md` to the page URL.
+
+## Create image variation
+
+**post** `/images/variations`
+
+This endpoint is retired and no longer available. Use the image edits endpoint with a GPT Image model and a prompt to create a variation of an image. The request and response schemas below describe the legacy contract.
+
+### Body Parameters
+
+Content type: `multipart/form-data`
+
+- `image: string`
+
+  The image to use as the basis for the variation(s). Must be a valid PNG file, less than 4MB, and square.
+
+- `model: optional string or ImageModel or null (default: "dall-e-2")`
+
+  The legacy model used by the retired image variations endpoint. This endpoint no longer accepts requests.
+
+  - `string`
+
+  - `ImageModel = "gpt-image-1.5" or "gpt-image-2" or "gpt-image-2-2026-04-21" or 11 more`
+
+    - `"gpt-image-1.5"`
+
+    - `"gpt-image-2"`
+
+    - `"gpt-image-2-2026-04-21"`
+
+    - `"gpt-image-2.5-sunburst"`
+
+    - `"gpt-image-2.5-sunburst-2026-09-08"`
+
+    - `"gpt-image-2.5-flare"`
+
+    - `"gpt-image-2.5-flare-2026-09-08"`
+
+    - `"gpt-image-2.6-sunburst"`
+
+    - `"gpt-image-2.6-flare"`
+
+    - `"gpt-image-1"`
+
+    - `"gpt-image-1-mini"`
+
+    - `"chatgpt-image-latest"`
+
+    - `"dall-e-2"`
+
+    - `"dall-e-3"`
+
+- `n: optional integer or null (default: 1)`
+
+  The number of images to generate. Must be between 1 and 10.
+
+  `minimum: 1`, `maximum: 10`
+
+- `response_format: optional "url" or "b64_json" or null (default: "url")`
+
+  The format in which the generated images are returned. Must be one of `url` or `b64_json`. URLs are only valid for 60 minutes after the image has been generated.
+
+  - `"url"`
+
+  - `"b64_json"`
+
+- `size: optional "256x256" or "512x512" or "1024x1024" or null (default: "1024x1024")`
+
+  The size of the generated images. Must be one of `256x256`, `512x512`, or `1024x1024`.
+
+  - `"256x256"`
+
+  - `"512x512"`
+
+  - `"1024x1024"`
+
+- `user: optional string`
+
+  A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse. [Learn more](/api/docs/guides/safety-best-practices#implement-safety-identifiers).
+
+### Returns
+
+- `ImagesResponse object { created, background, data, 6 more }`
+
+  The response from the image generation endpoint.
+
+  - `created: integer`
+
+    The Unix timestamp (in seconds) of when the image was created.
+
+    `format: unixtime`
+
+  - `background: optional "transparent" or "opaque"`
+
+    The background parameter used for the image generation. Either `transparent` or `opaque`.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+  - `data: optional array of Image`
+
+    The list of generated images.
+
+    - `b64_json: optional string`
+
+      The base64-encoded JSON of the generated image. Returned by default for GPT image models, or when `response_format` is set to `b64_json` for models that support that parameter.
+
+    - `revised_prompt: optional string`
+
+      The revised prompt used to generate the image, for models that support prompt revision. Not returned by GPT image models.
+
+    - `url: optional string`
+
+      The URL of the generated image when `response_format` is set to `url` for models that support that parameter. Unsupported for GPT image models.
+
+      `format: uri`
+
+  - `output_format: optional "png" or "webp" or "jpeg" or 2 more`
+
+    The output format of the generated or edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+    - `"gif"`
+
+    - `"svg"`
+
+  - `quality: optional "low" or "medium" or "high" or 2 more`
+
+    The quality of the image generated. One of `low`, `medium`, `high`, `xhigh`, or `max`.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+  - `size: optional string or "1024x1024" or "1024x1536" or "1536x1024"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+  - `svg_usage: optional object { input_tokens, model, output_tokens, 2 more }`
+
+    Token usage for SVG authoring, separate from image rendering usage.
+
+    - `input_tokens: integer`
+
+    - `model: string`
+
+    - `output_tokens: integer`
+
+    - `reasoning_tokens: integer`
+
+    - `total_tokens: integer`
+
+  - `usage: optional object { input_tokens, input_tokens_details, output_tokens, 2 more }`
+
+    Token usage information for image generation with GPT Image models.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of output tokens generated by the model.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+    - `output_tokens_details: optional object { image_tokens, text_tokens }`
+
+      The output token details for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image output tokens generated by the model.
+
+      - `text_tokens: integer`
+
+        The number of text output tokens generated by the model.
+
+### Example
+
+```http
+curl https://api.openai.com/v1/images/variations \
+    -H 'Content-Type: multipart/form-data' \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -F 'image=@/path/to/image' \
+    -F model=dall-e-2 \
+    -F n=1 \
+    -F response_format=url \
+    -F size=1024x1024 \
+    -F user=user-1234
+```
+
+#### 200 — Example
+
+```json
+{
+  "created": 0,
+  "background": "transparent",
+  "data": [
+    {
+      "b64_json": "b64_json",
+      "revised_prompt": "revised_prompt",
+      "url": "https://example.com"
+    }
+  ],
+  "output_format": "png",
+  "quality": "low",
+  "safety_identifier": "safety_identifier",
+  "size": "1024x1024",
+  "svg_usage": {
+    "input_tokens": 0,
+    "model": "model",
+    "output_tokens": 0,
+    "reasoning_tokens": 0,
+    "total_tokens": 0
+  },
+  "usage": {
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    }
+  }
+}
+```
+
+### Example
+
+```http
+curl https://api.openai.com/v1/images/variations \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F image="@otter.png" \
+  -F n=2 \
+  -F size="1024x1024"
+```
+
+#### Response example
+
+```json
+{
+  "created": 1589478378,
+  "data": [
+    {
+      "url": "https://..."
+    },
+    {
+      "url": "https://..."
+    }
+  ]
+}
+```
+
+## Create image edit
+
+**post** `/images/edits`
+
+Creates an edited or extended image given one or more source images and a prompt. This endpoint supports GPT Image models.
+
+### Body Parameters
+
+Content type: `application/json`
+
+- `images: array of object { file_id, image_url }`
+
+  Input image references to edit.
+  For GPT image models, you can provide up to 16 images.
+
+  `minItems: 1`, `maxItems: 16`
+
+  - `file_id: optional string`
+
+    The File API ID of an uploaded image to use as input.
+
+  - `image_url: optional string`
+
+    A fully qualified URL or base64-encoded data URL.
+
+    `maxLength: 20971520`, `format: uri`
+
+- `prompt: string`
+
+  A text description of the desired image edit.
+
+  `minLength: 1`, `maxLength: 32000`
+
+- `background: optional "transparent" or "opaque" or "auto" or null (default: "auto")`
+
+  Set the background of the generated image output. `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare`, including their `2026-09-08` snapshots, support `opaque` and `transparent` backgrounds. Transparent backgrounds are available for supported GPT Image models. For `gpt-image-2` and `gpt-image-2-2026-04-21`, this support is in preview. When using `transparent`, set the output format to `png` or `webp`.
+
+  - `"transparent"`
+
+  - `"opaque"`
+
+  - `"auto"`
+
+- `complexity: optional "low" or "medium" or "high" or null`
+
+  Computation spent planning the image, independently of rendering quality. Uses the image model's configured default when omitted. For SVG output, controls the reference image, independently of the SVG author's reasoning.
+
+  - `"low"`
+
+  - `"medium"`
+
+  - `"high"`
+
+- `frame_count: optional integer or null`
+
+  Number of frames for GIF output. Accepts integers from 2 through 16. Defaults to 9 when omitted. Only supported with output_format=gif. The requested size must satisfy the selected model's GIF size limits. GIF output does not support streaming, partial images, masks, or custom output compression. Requires access to the GIF preview for the selected model.
+
+  `minimum: 2`, `maximum: 16`
+
+- `frame_duration_ms: optional integer or null`
+
+  Requested delay per GIF frame, in milliseconds. Defaults to 200 when omitted. GIF output rounds to the nearest 10 ms and caps the encoded delay at 655,350 ms per frame. Only supported with output_format=gif.
+
+  `minimum: 20`
+
+- `input_fidelity: optional "high" or "low" or null`
+
+  Control how much effort the model will exert to match the style and features, especially facial features, of input images. Supports `high` and `low` on `gpt-image-1.5`; `gpt-image-1-mini` supports only `low`. For `gpt-image-2`, omit this parameter. Defaults to `low` on supported models.
+
+  - `"high"`
+
+  - `"low"`
+
+- `markup: optional object { file_id, image_url }`
+
+  A transparent PNG overlaid on the first image, referenced by file ID, HTTPS URL, or base64 data URL. Must match that image's dimensions after orientation and contain transparent pixels. Supports GPT Image 2.5. Cannot be combined with mask.
+
+  - `file_id: optional string`
+
+    The File API ID of an uploaded image to use as input.
+
+  - `image_url: optional string`
+
+    A fully qualified URL or base64-encoded data URL.
+
+    `maxLength: 20971520`, `format: uri`
+
+- `mask: optional object { file_id, image_url }`
+
+  Reference an input image by either URL or uploaded file ID.
+  Provide exactly one of `image_url` or `file_id`.
+
+  - `file_id: optional string`
+
+    The File API ID of an uploaded image to use as input.
+
+  - `image_url: optional string`
+
+    A fully qualified URL or base64-encoded data URL.
+
+    `maxLength: 20971520`, `format: uri`
+
+- `model: optional string or "gpt-image-1.5" or "gpt-image-2" or "gpt-image-2-2026-04-21" or 9 more or null (default: "gpt-image-2.5-sunburst")`
+
+  The GPT image model to use for image editing, including `gpt-image-2`, its dated
+  snapshot `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
+  `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
+  `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`, and `gpt-image-2.6-flare`.
+  Defaults to `gpt-image-2.5-sunburst`.
+
+  `gpt-image-1` was shut down on October 23, 2026. Use
+  `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
+
+  - `string`
+
+  - `"gpt-image-1.5" or "gpt-image-2" or "gpt-image-2-2026-04-21" or 9 more`
+
+    The GPT image model to use for image editing, including `gpt-image-2`, its dated
+    snapshot `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
+    `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
+    `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`, and `gpt-image-2.6-flare`.
+    Defaults to `gpt-image-2.5-sunburst`.
+
+    `gpt-image-1` was shut down on October 23, 2026. Use
+    `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
+
+    - `"gpt-image-1.5"`
+
+    - `"gpt-image-2"`
+
+    - `"gpt-image-2-2026-04-21"`
+
+    - `"gpt-image-2.5-sunburst"`
+
+    - `"gpt-image-2.5-sunburst-2026-09-08"`
+
+    - `"gpt-image-2.5-flare"`
+
+    - `"gpt-image-2.5-flare-2026-09-08"`
+
+    - `"gpt-image-2.6-sunburst"`
+
+    - `"gpt-image-2.6-flare"`
+
+    - `"gpt-image-1"`
+
+    - `"gpt-image-1-mini"`
+
+    - `"chatgpt-image-latest"`
+
+- `moderation: optional "low" or "auto" or null (default: "auto")`
+
+  Moderation level for GPT image models.
+
+  - `"low"`
+
+  - `"auto"`
+
+- `n: optional integer or null (default: 1)`
+
+  The number of edited images to generate.
+
+  `minimum: 1`, `maximum: 10`
+
+- `output_compression: optional integer or null`
+
+  Compression level for `jpeg` or `webp` output.
+
+  `minimum: 0`, `maximum: 100`
+
+- `output_format: optional "png" or "webp" or "jpeg" or 2 more or null (default: "png")`
+
+  Output image format. Supported for GPT image models. SVG output requires a supported image model and project access.
+
+  - `"png"`
+
+  - `"webp"`
+
+  - `"jpeg"`
+
+  - `"gif"`
+
+  - `"svg"`
+
+- `partial_images: optional integer or null (default: 0)`
+
+  The number of partial images to generate. This parameter is used for
+  streaming responses that return partial images. Value must be between 0 and 3.
+  When set to 0, the response will be a single image sent in one streaming event.
+
+  Note that the final image may be sent before the full number of partial images
+  are generated if the full image is generated more quickly.
+
+  `minimum: 0`, `maximum: 3`
+
+- `quality: optional "low" or "medium" or "high" or 3 more or null (default: "auto")`
+
+  Output quality for GPT image models. The GPT image models support `low`, `medium`,
+  and `high`. `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare`, including their
+  `2026-09-08` snapshots, also support `xhigh` and `max`. Defaults to `auto`.
+
+  - `"low"`
+
+  - `"medium"`
+
+  - `"high"`
+
+  - `"xhigh"`
+
+  - `"max"`
+
+  - `"auto"`
+
+- `safety_identifier: optional string or null`
+
+  A stable identifier for an end user in your organization, used for safety monitoring and abuse detection. Hash a username or email address to avoid sending identifying information. A non-empty value takes precedence over the deprecated `user` parameter. If omitted, null, or empty, the API uses `user` when available. [Learn more](/api/docs/guides/safety-best-practices#implement-safety-identifiers).
+
+  `maxLength: 128`
+
+- `size: optional string or "auto" or "1024x1024" or "1536x1024" or "1024x1536" or null (default: "auto")`
+
+  The size of the generated images. For `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, and `gpt-image-2.5-flare-2026-09-08`, arbitrary resolutions are supported as `WIDTHxHEIGHT` strings, for example `1536x864`. Width and height must both be divisible by 16 and the requested aspect ratio must be between 1:3 and 3:1. Resolutions above `2560x1440` are experimental, and the maximum supported resolution is `3840x2160`. The requested size must also satisfy the model's current pixel and edge limits. The standard sizes `1024x1024`, `1536x1024`, and `1024x1536` are supported by the GPT image models; `auto` is supported for models that allow automatic sizing.
+
+  - `string`
+
+  - `"auto" or "1024x1024" or "1536x1024" or "1024x1536"`
+
+    The size of the generated images. For `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, and `gpt-image-2.5-flare-2026-09-08`, arbitrary resolutions are supported as `WIDTHxHEIGHT` strings, for example `1536x864`. Width and height must both be divisible by 16 and the requested aspect ratio must be between 1:3 and 3:1. Resolutions above `2560x1440` are experimental, and the maximum supported resolution is `3840x2160`. The requested size must also satisfy the model's current pixel and edge limits. The standard sizes `1024x1024`, `1536x1024`, and `1024x1536` are supported by the GPT image models; `auto` is supported for models that allow automatic sizing.
+
+    - `"auto"`
+
+    - `"1024x1024"`
+
+    - `"1536x1024"`
+
+    - `"1024x1536"`
+
+- `stream: optional boolean or null (default: false)`
+
+  Stream partial image results as events.
+
+- `svg: optional object { model, reasoning }  or null`
+
+  Selects the author model and reasoning effort for `output_format=svg`. Supply `svg.model` when SVG model selection is enabled. Otherwise, omit this object. SVG output requires `n=1` and cannot use streaming, partial images, or output compression.
+
+  - `model: optional string`
+
+    `minLength: 1`
+
+  - `reasoning: optional object { effort }  or null`
+
+    Reasoning effort for SVG authoring. When omitted, uses the author model's default in both Images and Responses.
+
+    - `effort: optional "none" or "minimal" or "low" or 4 more`
+
+      Controls how much effort the model should spend on reasoning for this request.
+
+      - `"none"`
+
+      - `"minimal"`
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+- `user: optional string`
+
+  Deprecated: use `safety_identifier` instead. This parameter remains accepted for backward compatibility and is used when `safety_identifier` is omitted, null, or empty. [Learn more](/api/docs/guides/safety-best-practices#implement-safety-identifiers).
+
+### Returns
+
+- `ImagesResponse object { created, background, data, 6 more }`
+
+  The response from the image generation endpoint.
+
+  - `created: integer`
+
+    The Unix timestamp (in seconds) of when the image was created.
+
+    `format: unixtime`
+
+  - `background: optional "transparent" or "opaque"`
+
+    The background parameter used for the image generation. Either `transparent` or `opaque`.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+  - `data: optional array of Image`
+
+    The list of generated images.
+
+    - `b64_json: optional string`
+
+      The base64-encoded JSON of the generated image. Returned by default for GPT image models, or when `response_format` is set to `b64_json` for models that support that parameter.
+
+    - `revised_prompt: optional string`
+
+      The revised prompt used to generate the image, for models that support prompt revision. Not returned by GPT image models.
+
+    - `url: optional string`
+
+      The URL of the generated image when `response_format` is set to `url` for models that support that parameter. Unsupported for GPT image models.
+
+      `format: uri`
+
+  - `output_format: optional "png" or "webp" or "jpeg" or 2 more`
+
+    The output format of the generated or edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+    - `"gif"`
+
+    - `"svg"`
+
+  - `quality: optional "low" or "medium" or "high" or 2 more`
+
+    The quality of the image generated. One of `low`, `medium`, `high`, `xhigh`, or `max`.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+  - `size: optional string or "1024x1024" or "1024x1536" or "1536x1024"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+  - `svg_usage: optional object { input_tokens, model, output_tokens, 2 more }`
+
+    Token usage for SVG authoring, separate from image rendering usage.
+
+    - `input_tokens: integer`
+
+    - `model: string`
+
+    - `output_tokens: integer`
+
+    - `reasoning_tokens: integer`
+
+    - `total_tokens: integer`
+
+  - `usage: optional object { input_tokens, input_tokens_details, output_tokens, 2 more }`
+
+    Token usage information for image generation with GPT Image models.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of output tokens generated by the model.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+    - `output_tokens_details: optional object { image_tokens, text_tokens }`
+
+      The output token details for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image output tokens generated by the model.
+
+      - `text_tokens: integer`
+
+        The number of text output tokens generated by the model.
+
+### Example
+
+```http
+curl https://api.openai.com/v1/images/edits \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+          "images": [
+            {
+              "image_url": "https://example.com/source-image.png"
+            }
+          ],
+          "prompt": "Add a watercolor effect to this image",
+          "model": "gpt-image-1.5",
+          "quality": "high",
+          "size": "1024x1024"
+        }'
+```
+
+#### 200 — Example
+
+```json
+{
+  "created": 0,
+  "background": "transparent",
+  "data": [
+    {
+      "b64_json": "b64_json",
+      "revised_prompt": "revised_prompt",
+      "url": "https://example.com"
+    }
+  ],
+  "output_format": "png",
+  "quality": "low",
+  "safety_identifier": "safety_identifier",
+  "size": "1024x1024",
+  "svg_usage": {
+    "input_tokens": 0,
+    "model": "model",
+    "output_tokens": 0,
+    "reasoning_tokens": 0,
+    "total_tokens": 0
+  },
+  "usage": {
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    }
+  }
+}
+```
+
+### Edit image
+
+```http
+curl -s -D >(grep -i x-request-id >&2) \
+  -o >(jq -r '.data[0].b64_json' | base64 --decode > gift-basket.png) \
+  -X POST "https://api.openai.com/v1/images/edits" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "model=gpt-image-1.5" \
+  -F "image[]=@body-lotion.png" \
+  -F "image[]=@bath-bomb.png" \
+  -F "image[]=@incense-kit.png" \
+  -F "image[]=@soap.png" \
+  -F 'prompt=Create a lovely gift basket with these four items in it'
+```
+
+### JSON request with image URL (json_with_url)
+
+```http
+curl https://api.openai.com/v1/images/edits \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+          "images": [
+            {
+              "image_url": "https://example.com/source-image.png"
+            }
+          ],
+          "prompt": "Add a watercolor effect to this image",
+          "model": "gpt-image-1.5",
+          "quality": "high",
+          "size": "1024x1024"
+        }'
+```
+
+### JSON request with uploaded file id (json_with_file_id)
+
+```http
+curl https://api.openai.com/v1/images/edits \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+          "images": [
+            {
+              "file_id": "file-abc123"
+            }
+          ],
+          "prompt": "Replace the background with a snowy mountain scene",
+          "mask": {
+            "file_id": "file-mask123"
+          },
+          "model": "gpt-image-1.5",
+          "output_compression": 100,
+          "output_format": "png"
+        }'
+```
+
+### Streaming
+
+```http
+curl -s -N -X POST "https://api.openai.com/v1/images/edits" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "model=gpt-image-1.5" \
+  -F "image[]=@body-lotion.png" \
+  -F "image[]=@bath-bomb.png" \
+  -F "image[]=@incense-kit.png" \
+  -F "image[]=@soap.png" \
+  -F 'prompt=Create a lovely gift basket with these four items in it' \
+  -F "stream=true"
+```
+
+#### Response example
+
+```json
+event: image_edit.partial_image
+data: {"type":"image_edit.partial_image","b64_json":"...","partial_image_index":0}
+
+event: image_edit.completed
+data: {"type":"image_edit.completed","b64_json":"...","usage":{"total_tokens":100,"input_tokens":50,"output_tokens":50,"input_tokens_details":{"text_tokens":10,"image_tokens":40}}}
+```
+
+## Create image
+
+**post** `/images/generations`
+
+Creates an image given a prompt using a GPT Image model. [Learn more](/api/docs/guides/images-vision).
+
+### Body Parameters
+
+Content type: `application/json`
+
+- `model: string or ImageModel`
+
+  The GPT image model to use for image generation. Specify a model explicitly.
+  Supported models include `gpt-image-1-mini`, `gpt-image-1.5`, `gpt-image-2`,
+  `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`,
+  `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`,
+  `gpt-image-2.5-flare-2026-09-08`, `gpt-image-2.6-sunburst`, `gpt-image-2.6-flare`,
+  and `chatgpt-image-latest`.
+
+  `gpt-image-1` was shut down on October 23, 2026. Use
+  `gpt-image-2.5-sunburst` or `gpt-image-2.5-flare` instead.
+
+  - `string`
+
+  - `ImageModel = "gpt-image-1.5" or "gpt-image-2" or "gpt-image-2-2026-04-21" or 11 more`
+
+    - `"gpt-image-1.5"`
+
+    - `"gpt-image-2"`
+
+    - `"gpt-image-2-2026-04-21"`
+
+    - `"gpt-image-2.5-sunburst"`
+
+    - `"gpt-image-2.5-sunburst-2026-09-08"`
+
+    - `"gpt-image-2.5-flare"`
+
+    - `"gpt-image-2.5-flare-2026-09-08"`
+
+    - `"gpt-image-2.6-sunburst"`
+
+    - `"gpt-image-2.6-flare"`
+
+    - `"gpt-image-1"`
+
+    - `"gpt-image-1-mini"`
+
+    - `"chatgpt-image-latest"`
+
+    - `"dall-e-2"`
+
+    - `"dall-e-3"`
+
+- `prompt: string`
+
+  A text description of the desired image(s). The maximum length is 32000 characters.
+
+- `background: optional "transparent" or "opaque" or "auto" or null (default: "auto")`
+
+  Set the background of the generated image(s). This parameter is only supported for
+  the GPT image models. Must be one of `transparent`, `opaque`, or `auto` (default
+  value). When `auto` is used, the model will automatically determine the best
+  background for the image.
+
+  `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare`, including their `2026-09-08`
+  snapshots, support `opaque` and `transparent` backgrounds. Transparent backgrounds
+  are available for supported GPT Image models. For `gpt-image-2` and
+  `gpt-image-2-2026-04-21`, this support is in preview. When using `transparent`,
+  set the output format to `png` or `webp`.
+
+  - `"transparent"`
+
+  - `"opaque"`
+
+  - `"auto"`
+
+- `complexity: optional "low" or "medium" or "high" or null`
+
+  Computation spent planning the image, independently of rendering quality. Uses the image model's configured default when omitted. For SVG output, controls the reference image, independently of the SVG author's reasoning.
+
+  - `"low"`
+
+  - `"medium"`
+
+  - `"high"`
+
+- `frame_count: optional integer or null`
+
+  Number of frames for GIF output. Accepts integers from 2 through 16. Defaults to 9 when omitted. Only supported with output_format=gif. The requested size must satisfy the selected model's GIF size limits. GIF output does not support streaming, partial images, masks, or custom output compression. Requires access to the GIF preview for the selected model.
+
+  `minimum: 2`, `maximum: 16`
+
+- `frame_duration_ms: optional integer or null`
+
+  Requested delay per GIF frame, in milliseconds. Defaults to 200 when omitted. GIF output rounds to the nearest 10 ms and caps the encoded delay at 655,350 ms per frame. Only supported with output_format=gif.
+
+  `minimum: 20`
+
+- `moderation: optional "low" or "auto" or null (default: "auto")`
+
+  Control the content-moderation level for images generated by the GPT image models. Must be either `low` for less restrictive filtering or `auto` (default value).
+
+  - `"low"`
+
+  - `"auto"`
+
+- `n: optional integer or null (default: 1)`
+
+  The number of images to generate. Must be between 1 and 10.
+
+  `minimum: 1`, `maximum: 10`
+
+- `output_compression: optional integer or null (default: 100)`
+
+  The compression level (0-100%) for the generated images. This parameter is only supported for the GPT image models with the `webp` or `jpeg` output formats, and defaults to 100.
+
+- `output_format: optional "png" or "webp" or "jpeg" or 2 more or null (default: "png")`
+
+  The format in which the generated images are returned. This parameter is only supported for the GPT image models.
+
+  - `"png"`
+
+  - `"webp"`
+
+  - `"jpeg"`
+
+  - `"gif"`
+
+  - `"svg"`
+
+- `partial_images: optional integer or null (default: 0)`
+
+  The number of partial images to generate. This parameter is used for
+  streaming responses that return partial images. Value must be between 0 and 3.
+  When set to 0, the response will be a single image sent in one streaming event.
+
+  Note that the final image may be sent before the full number of partial images
+  are generated if the full image is generated more quickly.
+
+  `minimum: 0`, `maximum: 3`
+
+- `quality: optional "low" or "medium" or "high" or 5 more or null (default: "auto")`
+
+  The quality of the image that will be generated.
+
+  - `auto` (default value) will automatically select the best quality for the given
+    model.
+  - `high`, `medium` and `low` are supported for the GPT image models.
+  - `gpt-image-2.5-sunburst` and `gpt-image-2.5-flare`, including their `2026-09-08`
+    snapshots, also support `xhigh` and `max`.
+
+  - `"low"`
+
+  - `"medium"`
+
+  - `"high"`
+
+  - `"xhigh"`
+
+  - `"max"`
+
+  - `"auto"`
+
+  - `"standard"`
+
+  - `"hd"`
+
+- `response_format: optional "url" or "b64_json" or null`
+
+  Legacy response format parameter for retired image models. Unsupported for GPT image models, which always return base64-encoded images.
+
+  - `"url"`
+
+  - `"b64_json"`
+
+- `safety_identifier: optional string or null`
+
+  A stable identifier for an end user in your organization, used for safety monitoring and abuse detection. Hash a username or email address to avoid sending identifying information. A non-empty value takes precedence over the deprecated `user` parameter. If omitted, null, or empty, the API uses `user` when available. [Learn more](/api/docs/guides/safety-best-practices#implement-safety-identifiers).
+
+  `maxLength: 128`
+
+- `size: optional string or "auto" or "1024x1024" or "1536x1024" or 5 more or null (default: "auto")`
+
+  The size of the generated images. For `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, and `gpt-image-2.5-flare-2026-09-08`, arbitrary resolutions are supported as `WIDTHxHEIGHT` strings, for example `1536x864`. Width and height must both be divisible by 16 and the requested aspect ratio must be between 1:3 and 3:1. Resolutions above `2560x1440` are experimental, and the maximum supported resolution is `3840x2160`. The requested size must also satisfy the model's current pixel and edge limits. The standard sizes `1024x1024`, `1536x1024`, and `1024x1536` are supported by the GPT image models; `auto` is supported for models that allow automatic sizing.
+
+  - `string`
+
+  - `"auto" or "1024x1024" or "1536x1024" or 5 more`
+
+    The size of the generated images. For `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, and `gpt-image-2.5-flare-2026-09-08`, arbitrary resolutions are supported as `WIDTHxHEIGHT` strings, for example `1536x864`. Width and height must both be divisible by 16 and the requested aspect ratio must be between 1:3 and 3:1. Resolutions above `2560x1440` are experimental, and the maximum supported resolution is `3840x2160`. The requested size must also satisfy the model's current pixel and edge limits. The standard sizes `1024x1024`, `1536x1024`, and `1024x1536` are supported by the GPT image models; `auto` is supported for models that allow automatic sizing.
+
+    - `"auto"`
+
+    - `"1024x1024"`
+
+    - `"1536x1024"`
+
+    - `"1024x1536"`
+
+    - `"256x256"`
+
+    - `"512x512"`
+
+    - `"1792x1024"`
+
+    - `"1024x1792"`
+
+- `stream: optional boolean or null (default: false)`
+
+  Generate the image in streaming mode. Defaults to `false`. See the
+  [Image generation guide](/api/docs/guides/image-generation) for more information.
+  This parameter is only supported for the GPT image models.
+
+- `style: optional "vivid" or "natural" or null`
+
+  Legacy style parameter for retired image models. Unsupported for GPT image models; describe the desired style in the prompt instead.
+
+  - `"vivid"`
+
+  - `"natural"`
+
+- `svg: optional object { model, reasoning }  or null`
+
+  Selects the model and reasoning effort used to author SVG output. Requires output_format=svg and access to SVG model selection. When model selection is enabled, supply svg.model. When model selection is disabled, omit this object. The top-level model selects the image model that creates the reference image. SVG generation requires n=1 and does not support streaming, partial images, prompt_rewriter, or output_compression.
+
+  - `model: string`
+
+    Model used to author the SVG. Required when SVG model selection is enabled.
+
+    `minLength: 1`
+
+  - `reasoning: optional object { effort }  or null`
+
+    Reasoning settings for the SVG author, independent of image complexity. Omitted or null effort uses the author model's default. Supported efforts depend on the selected author model.
+
+    - `effort: optional "none" or "minimal" or "low" or 4 more or null`
+
+      Controls how much effort the SVG author spends on reasoning. Uses the author model's default when omitted or null.
+
+      - `"none"`
+
+      - `"minimal"`
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+- `user: optional string`
+
+  Deprecated: use `safety_identifier` instead. This parameter remains accepted for backward compatibility and is used when `safety_identifier` is omitted, null, or empty. [Learn more](/api/docs/guides/safety-best-practices#implement-safety-identifiers).
+
+### Returns
+
+- `ImagesResponse object { created, background, data, 6 more }`
+
+  The response from the image generation endpoint.
+
+  - `created: integer`
+
+    The Unix timestamp (in seconds) of when the image was created.
+
+    `format: unixtime`
+
+  - `background: optional "transparent" or "opaque"`
+
+    The background parameter used for the image generation. Either `transparent` or `opaque`.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+  - `data: optional array of Image`
+
+    The list of generated images.
+
+    - `b64_json: optional string`
+
+      The base64-encoded JSON of the generated image. Returned by default for GPT image models, or when `response_format` is set to `b64_json` for models that support that parameter.
+
+    - `revised_prompt: optional string`
+
+      The revised prompt used to generate the image, for models that support prompt revision. Not returned by GPT image models.
+
+    - `url: optional string`
+
+      The URL of the generated image when `response_format` is set to `url` for models that support that parameter. Unsupported for GPT image models.
+
+      `format: uri`
+
+  - `output_format: optional "png" or "webp" or "jpeg" or 2 more`
+
+    The output format of the generated or edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+    - `"gif"`
+
+    - `"svg"`
+
+  - `quality: optional "low" or "medium" or "high" or 2 more`
+
+    The quality of the image generated. One of `low`, `medium`, `high`, `xhigh`, or `max`.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+  - `size: optional string or "1024x1024" or "1024x1536" or "1536x1024"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+  - `svg_usage: optional object { input_tokens, model, output_tokens, 2 more }`
+
+    Token usage for SVG authoring, separate from image rendering usage.
+
+    - `input_tokens: integer`
+
+    - `model: string`
+
+    - `output_tokens: integer`
+
+    - `reasoning_tokens: integer`
+
+    - `total_tokens: integer`
+
+  - `usage: optional object { input_tokens, input_tokens_details, output_tokens, 2 more }`
+
+    Token usage information for image generation with GPT Image models.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of output tokens generated by the model.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+    - `output_tokens_details: optional object { image_tokens, text_tokens }`
+
+      The output token details for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image output tokens generated by the model.
+
+      - `text_tokens: integer`
+
+        The number of text output tokens generated by the model.
+
+### Example
+
+```http
+curl https://api.openai.com/v1/images/generations \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+          "model": "gpt-image-2.5-flare",
+          "prompt": "A cute baby sea otter",
+          "background": "transparent",
+          "moderation": "low",
+          "n": 1,
+          "output_compression": 100,
+          "output_format": "png",
+          "partial_images": 1,
+          "quality": "medium",
+          "safety_identifier": "user-1234",
+          "size": "1024x1024",
+          "style": "vivid",
+          "user": "user-1234"
+        }'
+```
+
+#### 200 — Example
+
+```json
+{
+  "created": 0,
+  "background": "transparent",
+  "data": [
+    {
+      "b64_json": "b64_json",
+      "revised_prompt": "revised_prompt",
+      "url": "https://example.com"
+    }
+  ],
+  "output_format": "png",
+  "quality": "low",
+  "safety_identifier": "safety_identifier",
+  "size": "1024x1024",
+  "svg_usage": {
+    "input_tokens": 0,
+    "model": "model",
+    "output_tokens": 0,
+    "reasoning_tokens": 0,
+    "total_tokens": 0
+  },
+  "usage": {
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    },
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "output_tokens_details": {
+      "image_tokens": 0,
+      "text_tokens": 0
+    }
+  }
+}
+```
+
+### Generate image
+
+```http
+curl https://api.openai.com/v1/images/generations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-image-2.5-flare",
+    "prompt": "A cute baby sea otter",
+    "n": 1,
+    "size": "1024x1024"
+  }'
+```
+
+#### Response example
+
+```json
+{
+  "created": 1713833628,
+  "data": [
+    {
+      "b64_json": "..."
+    }
+  ],
+  "usage": {
+    "total_tokens": 100,
+    "input_tokens": 50,
+    "output_tokens": 50,
+    "input_tokens_details": {
+      "text_tokens": 10,
+      "image_tokens": 40
+    }
+  }
+}
+```
+
+### Streaming
+
+```http
+curl https://api.openai.com/v1/images/generations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-image-2.5-flare",
+    "prompt": "A cute baby sea otter",
+    "n": 1,
+    "size": "1024x1024",
+    "stream": true
+  }' \
+  --no-buffer
+```
+
+#### Response example
+
+```json
+event: image_generation.partial_image
+data: {"type":"image_generation.partial_image","b64_json":"...","partial_image_index":0}
+
+event: image_generation.completed
+data: {"type":"image_generation.completed","b64_json":"...","usage":{"total_tokens":100,"input_tokens":50,"output_tokens":50,"input_tokens_details":{"text_tokens":10,"image_tokens":40}}}
+```
+
+## Domain Types
+
+### Image
+
+- `Image object { b64_json, revised_prompt, url }`
+
+  Represents the content or the URL of an image generated by the OpenAI API.
+
+  - `b64_json: optional string`
+
+    The base64-encoded JSON of the generated image. Returned by default for GPT image models, or when `response_format` is set to `b64_json` for models that support that parameter.
+
+  - `revised_prompt: optional string`
+
+    The revised prompt used to generate the image, for models that support prompt revision. Not returned by GPT image models.
+
+  - `url: optional string`
+
+    The URL of the generated image when `response_format` is set to `url` for models that support that parameter. Unsupported for GPT image models.
+
+    `format: uri`
+
+### Image Edit Completed Event
+
+- `ImageEditCompletedEvent object { b64_json, background, created_at, 6 more }`
+
+  Emitted when image editing has completed and the final image is available.
+
+  - `b64_json: string`
+
+    Base64-encoded final edited image data, suitable for rendering as an image.
+
+  - `background: "transparent" or "opaque" or "auto"`
+
+    The background setting for the edited image.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+    - `"auto"`
+
+  - `created_at: integer`
+
+    The Unix timestamp when the event was created.
+
+    `format: unixtime`
+
+  - `output_format: "png" or "webp" or "jpeg"`
+
+    The output format for the edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+  - `quality: "low" or "medium" or "high" or 3 more`
+
+    The quality setting for the edited image.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+    - `"auto"`
+
+  - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+      - `"auto"`
+
+  - `type: "image_edit.completed"`
+
+    The type of the event. Always `image_edit.completed`.
+
+    - `"image_edit.completed"`
+
+  - `usage: object { input_tokens, input_tokens_details, output_tokens, total_tokens }`
+
+    For the GPT image models only, the token usage information for the image generation.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of image tokens in the output image.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+### Image Edit Partial Image Event
+
+- `ImageEditPartialImageEvent object { b64_json, background, created_at, 5 more }`
+
+  Emitted when a partial image is available during image editing streaming.
+
+  - `b64_json: string`
+
+    Base64-encoded partial image data, suitable for rendering as an image.
+
+  - `background: "transparent" or "opaque" or "auto"`
+
+    The background setting for the requested edited image.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+    - `"auto"`
+
+  - `created_at: integer`
+
+    The Unix timestamp when the event was created.
+
+    `format: unixtime`
+
+  - `output_format: "png" or "webp" or "jpeg"`
+
+    The output format for the requested edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+  - `partial_image_index: integer`
+
+    0-based index for the partial image (streaming).
+
+  - `quality: "low" or "medium" or "high" or 3 more`
+
+    The quality setting for the requested edited image.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+    - `"auto"`
+
+  - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+      - `"auto"`
+
+  - `type: "image_edit.partial_image"`
+
+    The type of the event. Always `image_edit.partial_image`.
+
+    - `"image_edit.partial_image"`
+
+### Image Edit Stream Event
+
+- `ImageEditStreamEvent = ImageEditPartialImageEvent or ImageEditCompletedEvent`
+
+  Emitted when a partial image is available during image editing streaming.
+
+  - `ImageEditPartialImageEvent object { b64_json, background, created_at, 5 more }`
+
+    Emitted when a partial image is available during image editing streaming.
+
+    - `b64_json: string`
+
+      Base64-encoded partial image data, suitable for rendering as an image.
+
+    - `background: "transparent" or "opaque" or "auto"`
+
+      The background setting for the requested edited image.
+
+      - `"transparent"`
+
+      - `"opaque"`
+
+      - `"auto"`
+
+    - `created_at: integer`
+
+      The Unix timestamp when the event was created.
+
+      `format: unixtime`
+
+    - `output_format: "png" or "webp" or "jpeg"`
+
+      The output format for the requested edited image.
+
+      - `"png"`
+
+      - `"webp"`
+
+      - `"jpeg"`
+
+    - `partial_image_index: integer`
+
+      0-based index for the partial image (streaming).
+
+    - `quality: "low" or "medium" or "high" or 3 more`
+
+      The quality setting for the requested edited image.
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+      - `"auto"`
+
+    - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `string`
+
+      - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+        The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+        - `"1024x1024"`
+
+        - `"1024x1536"`
+
+        - `"1536x1024"`
+
+        - `"auto"`
+
+    - `type: "image_edit.partial_image"`
+
+      The type of the event. Always `image_edit.partial_image`.
+
+      - `"image_edit.partial_image"`
+
+  - `ImageEditCompletedEvent object { b64_json, background, created_at, 6 more }`
+
+    Emitted when image editing has completed and the final image is available.
+
+    - `b64_json: string`
+
+      Base64-encoded final edited image data, suitable for rendering as an image.
+
+    - `background: "transparent" or "opaque" or "auto"`
+
+      The background setting for the edited image.
+
+      - `"transparent"`
+
+      - `"opaque"`
+
+      - `"auto"`
+
+    - `created_at: integer`
+
+      The Unix timestamp when the event was created.
+
+      `format: unixtime`
+
+    - `output_format: "png" or "webp" or "jpeg"`
+
+      The output format for the edited image.
+
+      - `"png"`
+
+      - `"webp"`
+
+      - `"jpeg"`
+
+    - `quality: "low" or "medium" or "high" or 3 more`
+
+      The quality setting for the edited image.
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+      - `"auto"`
+
+    - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `string`
+
+      - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+        The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+        - `"1024x1024"`
+
+        - `"1024x1536"`
+
+        - `"1536x1024"`
+
+        - `"auto"`
+
+    - `type: "image_edit.completed"`
+
+      The type of the event. Always `image_edit.completed`.
+
+      - `"image_edit.completed"`
+
+    - `usage: object { input_tokens, input_tokens_details, output_tokens, total_tokens }`
+
+      For the GPT image models only, the token usage information for the image generation.
+
+      - `input_tokens: integer`
+
+        The number of tokens (images and text) in the input prompt.
+
+      - `input_tokens_details: object { image_tokens, text_tokens }`
+
+        The input tokens detailed information for the image generation.
+
+        - `image_tokens: integer`
+
+          The number of image tokens in the input prompt.
+
+        - `text_tokens: integer`
+
+          The number of text tokens in the input prompt.
+
+      - `output_tokens: integer`
+
+        The number of image tokens in the output image.
+
+      - `total_tokens: integer`
+
+        The total number of tokens (images and text) used for the image generation.
+
+    - `safety_identifier: optional string or null`
+
+      The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+### Image Gen Completed Event
+
+- `ImageGenCompletedEvent object { b64_json, background, created_at, 6 more }`
+
+  Emitted when image generation has completed and the final image is available.
+
+  - `b64_json: string`
+
+    Base64-encoded image data, suitable for rendering as an image.
+
+  - `background: "transparent" or "opaque" or "auto"`
+
+    The background setting for the generated image.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+    - `"auto"`
+
+  - `created_at: integer`
+
+    The Unix timestamp when the event was created.
+
+    `format: unixtime`
+
+  - `output_format: "png" or "webp" or "jpeg"`
+
+    The output format for the generated image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+  - `quality: "low" or "medium" or "high" or 3 more`
+
+    The quality setting for the generated image.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+    - `"auto"`
+
+  - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+      - `"auto"`
+
+  - `type: "image_generation.completed"`
+
+    The type of the event. Always `image_generation.completed`.
+
+    - `"image_generation.completed"`
+
+  - `usage: object { input_tokens, input_tokens_details, output_tokens, total_tokens }`
+
+    For the GPT image models only, the token usage information for the image generation.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of image tokens in the output image.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+### Image Gen Partial Image Event
+
+- `ImageGenPartialImageEvent object { b64_json, background, created_at, 5 more }`
+
+  Emitted when a partial image is available during image generation streaming.
+
+  - `b64_json: string`
+
+    Base64-encoded partial image data, suitable for rendering as an image.
+
+  - `background: "transparent" or "opaque" or "auto"`
+
+    The background setting for the requested image.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+    - `"auto"`
+
+  - `created_at: integer`
+
+    The Unix timestamp when the event was created.
+
+    `format: unixtime`
+
+  - `output_format: "png" or "webp" or "jpeg"`
+
+    The output format for the requested image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+  - `partial_image_index: integer`
+
+    0-based index for the partial image (streaming).
+
+  - `quality: "low" or "medium" or "high" or 3 more`
+
+    The quality setting for the requested image.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+    - `"auto"`
+
+  - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+      - `"auto"`
+
+  - `type: "image_generation.partial_image"`
+
+    The type of the event. Always `image_generation.partial_image`.
+
+    - `"image_generation.partial_image"`
+
+### Image Gen Stream Event
+
+- `ImageGenStreamEvent = ImageGenPartialImageEvent or ImageGenCompletedEvent`
+
+  Emitted when a partial image is available during image generation streaming.
+
+  - `ImageGenPartialImageEvent object { b64_json, background, created_at, 5 more }`
+
+    Emitted when a partial image is available during image generation streaming.
+
+    - `b64_json: string`
+
+      Base64-encoded partial image data, suitable for rendering as an image.
+
+    - `background: "transparent" or "opaque" or "auto"`
+
+      The background setting for the requested image.
+
+      - `"transparent"`
+
+      - `"opaque"`
+
+      - `"auto"`
+
+    - `created_at: integer`
+
+      The Unix timestamp when the event was created.
+
+      `format: unixtime`
+
+    - `output_format: "png" or "webp" or "jpeg"`
+
+      The output format for the requested image.
+
+      - `"png"`
+
+      - `"webp"`
+
+      - `"jpeg"`
+
+    - `partial_image_index: integer`
+
+      0-based index for the partial image (streaming).
+
+    - `quality: "low" or "medium" or "high" or 3 more`
+
+      The quality setting for the requested image.
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+      - `"auto"`
+
+    - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `string`
+
+      - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+        The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+        - `"1024x1024"`
+
+        - `"1024x1536"`
+
+        - `"1536x1024"`
+
+        - `"auto"`
+
+    - `type: "image_generation.partial_image"`
+
+      The type of the event. Always `image_generation.partial_image`.
+
+      - `"image_generation.partial_image"`
+
+  - `ImageGenCompletedEvent object { b64_json, background, created_at, 6 more }`
+
+    Emitted when image generation has completed and the final image is available.
+
+    - `b64_json: string`
+
+      Base64-encoded image data, suitable for rendering as an image.
+
+    - `background: "transparent" or "opaque" or "auto"`
+
+      The background setting for the generated image.
+
+      - `"transparent"`
+
+      - `"opaque"`
+
+      - `"auto"`
+
+    - `created_at: integer`
+
+      The Unix timestamp when the event was created.
+
+      `format: unixtime`
+
+    - `output_format: "png" or "webp" or "jpeg"`
+
+      The output format for the generated image.
+
+      - `"png"`
+
+      - `"webp"`
+
+      - `"jpeg"`
+
+    - `quality: "low" or "medium" or "high" or 3 more`
+
+      The quality setting for the generated image.
+
+      - `"low"`
+
+      - `"medium"`
+
+      - `"high"`
+
+      - `"xhigh"`
+
+      - `"max"`
+
+      - `"auto"`
+
+    - `size: string or "1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `string`
+
+      - `"1024x1024" or "1024x1536" or "1536x1024" or "auto"`
+
+        The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+        - `"1024x1024"`
+
+        - `"1024x1536"`
+
+        - `"1536x1024"`
+
+        - `"auto"`
+
+    - `type: "image_generation.completed"`
+
+      The type of the event. Always `image_generation.completed`.
+
+      - `"image_generation.completed"`
+
+    - `usage: object { input_tokens, input_tokens_details, output_tokens, total_tokens }`
+
+      For the GPT image models only, the token usage information for the image generation.
+
+      - `input_tokens: integer`
+
+        The number of tokens (images and text) in the input prompt.
+
+      - `input_tokens_details: object { image_tokens, text_tokens }`
+
+        The input tokens detailed information for the image generation.
+
+        - `image_tokens: integer`
+
+          The number of image tokens in the input prompt.
+
+        - `text_tokens: integer`
+
+          The number of text tokens in the input prompt.
+
+      - `output_tokens: integer`
+
+        The number of image tokens in the output image.
+
+      - `total_tokens: integer`
+
+        The total number of tokens (images and text) used for the image generation.
+
+    - `safety_identifier: optional string or null`
+
+      The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+### Image Model
+
+- `ImageModel = "gpt-image-1.5" or "gpt-image-2" or "gpt-image-2-2026-04-21" or 11 more`
+
+  - `"gpt-image-1.5"`
+
+  - `"gpt-image-2"`
+
+  - `"gpt-image-2-2026-04-21"`
+
+  - `"gpt-image-2.5-sunburst"`
+
+  - `"gpt-image-2.5-sunburst-2026-09-08"`
+
+  - `"gpt-image-2.5-flare"`
+
+  - `"gpt-image-2.5-flare-2026-09-08"`
+
+  - `"gpt-image-2.6-sunburst"`
+
+  - `"gpt-image-2.6-flare"`
+
+  - `"gpt-image-1"`
+
+  - `"gpt-image-1-mini"`
+
+  - `"chatgpt-image-latest"`
+
+  - `"dall-e-2"`
+
+  - `"dall-e-3"`
+
+### Images Response
+
+- `ImagesResponse object { created, background, data, 6 more }`
+
+  The response from the image generation endpoint.
+
+  - `created: integer`
+
+    The Unix timestamp (in seconds) of when the image was created.
+
+    `format: unixtime`
+
+  - `background: optional "transparent" or "opaque"`
+
+    The background parameter used for the image generation. Either `transparent` or `opaque`.
+
+    - `"transparent"`
+
+    - `"opaque"`
+
+  - `data: optional array of Image`
+
+    The list of generated images.
+
+    - `b64_json: optional string`
+
+      The base64-encoded JSON of the generated image. Returned by default for GPT image models, or when `response_format` is set to `b64_json` for models that support that parameter.
+
+    - `revised_prompt: optional string`
+
+      The revised prompt used to generate the image, for models that support prompt revision. Not returned by GPT image models.
+
+    - `url: optional string`
+
+      The URL of the generated image when `response_format` is set to `url` for models that support that parameter. Unsupported for GPT image models.
+
+      `format: uri`
+
+  - `output_format: optional "png" or "webp" or "jpeg" or 2 more`
+
+    The output format of the generated or edited image.
+
+    - `"png"`
+
+    - `"webp"`
+
+    - `"jpeg"`
+
+    - `"gif"`
+
+    - `"svg"`
+
+  - `quality: optional "low" or "medium" or "high" or 2 more`
+
+    The quality of the image generated. One of `low`, `medium`, `high`, `xhigh`, or `max`.
+
+    - `"low"`
+
+    - `"medium"`
+
+    - `"high"`
+
+    - `"xhigh"`
+
+    - `"max"`
+
+  - `safety_identifier: optional string or null`
+
+    The effective safety identifier used for safety monitoring and abuse detection. This is the non-empty `safety_identifier` from the request, or the deprecated `user` value when `safety_identifier` is omitted, null, or empty.
+
+  - `size: optional string or "1024x1024" or "1024x1536" or "1536x1024"`
+
+    The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+    - `string`
+
+    - `"1024x1024" or "1024x1536" or "1536x1024"`
+
+      The image dimensions as a `WIDTHxHEIGHT` string, for example `1536x864`.
+
+      - `"1024x1024"`
+
+      - `"1024x1536"`
+
+      - `"1536x1024"`
+
+  - `svg_usage: optional object { input_tokens, model, output_tokens, 2 more }`
+
+    Token usage for SVG authoring, separate from image rendering usage.
+
+    - `input_tokens: integer`
+
+    - `model: string`
+
+    - `output_tokens: integer`
+
+    - `reasoning_tokens: integer`
+
+    - `total_tokens: integer`
+
+  - `usage: optional object { input_tokens, input_tokens_details, output_tokens, 2 more }`
+
+    Token usage information for image generation with GPT Image models.
+
+    - `input_tokens: integer`
+
+      The number of tokens (images and text) in the input prompt.
+
+    - `input_tokens_details: object { image_tokens, text_tokens }`
+
+      The input tokens detailed information for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image tokens in the input prompt.
+
+      - `text_tokens: integer`
+
+        The number of text tokens in the input prompt.
+
+    - `output_tokens: integer`
+
+      The number of output tokens generated by the model.
+
+    - `total_tokens: integer`
+
+      The total number of tokens (images and text) used for the image generation.
+
+    - `output_tokens_details: optional object { image_tokens, text_tokens }`
+
+      The output token details for the image generation.
+
+      - `image_tokens: integer`
+
+        The number of image output tokens generated by the model.
+
+      - `text_tokens: integer`
+
+        The number of text output tokens generated by the model.

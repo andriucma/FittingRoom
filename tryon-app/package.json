@@ -1,0 +1,39 @@
+{
+  "name": "tryon-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/copy-mediapipe.mjs",
+    "dev": "node scripts/dev.mjs",
+    "predev:next": "node scripts/copy-mediapipe.mjs",
+    "dev:next": "next dev",
+    "dev:python": "cd python && TRYON_DATA_DIR=../data .venv/bin/uvicorn tryon_local.server:app --port 8001 --reload",
+    "setup:python": "bash python/setup.sh",
+    "prebuild": "node scripts/copy-mediapipe.mjs",
+    "build": "next build",
+    "prestart": "node scripts/copy-mediapipe.mjs",
+    "start": "node scripts/dev.mjs --production",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/copy-mediapipe.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^3.0.0",
+    "@mediapipe/tasks-vision": "^1.2.2",
+    "next": "16.4.5",
+    "openai": "^7.53.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

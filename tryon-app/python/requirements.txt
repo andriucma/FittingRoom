@@ -1,0 +1,8 @@
+# Local-models service (Python 3.12, Apple Silicon for SAM 3 / MLX)
+mediapipe>=1.2
+mlx-vlm>=0.7.12
+fastapi>=0.162
+uvicorn[standard]
+pillow
+numpy
+matplotlib

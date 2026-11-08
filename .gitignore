@@ -1,0 +1,42 @@
+# Local credentials (only the placeholder template belongs in Git)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+
+# Runtime data and recordings
+data/
+work/
+*.mov
+*.mp4
+*.webm
+*.m4v
+
+# Dependencies, caches, and downloaded model weights
+node_modules/
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+/models/
+/tryon-app/python/models/
+*.task
+*.safetensors
+*.gguf
+tryon-app/public/mediapipe/
+
+# Generated builds and local tooling
+.next/
+.next-build/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.log
+.agents/
+.codex/
