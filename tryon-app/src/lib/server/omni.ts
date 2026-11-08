@@ -2,11 +2,12 @@ import "server-only";
 import { readFile, writeFile } from "node:fs/promises";
 import { GoogleGenAI } from "@google/genai";
 import { config, pricing } from "./config";
+import { assertOmniDuration } from "./ffmpeg";
 
 /** Gemini Omni video edit: re-dress the ORIGINAL video using try-on frames as references. */
 
 const KEEP = (top: string, bottom: string) =>
-  `Only the ${top} and ${bottom} change. Everything else he or she wears stays exactly as in the video in every frame: whatever is on their feet, any watch and any other accessory or clothing. Do not take shoes, socks, accessories or anything else from the reference images except the ${top} and ${bottom}, and do not invent, add or remove any item.`;
+  `Replace the original upper-body garment with exactly the selected ${top}, and the original lower-body garment with exactly the selected ${bottom}. Do not stack the new outfit over the old outfit, add duplicate layers, or copy companion clothing from the references. Everything outside those two clothing slots stays exactly as in the video in every frame: whatever is on their feet, their watch and other accessories. Do not take shoes, socks or accessories from the reference images, and do not invent, add or remove those items.`;
 
 export function omniPrompt(opts: { top: string; bottom: string; studio: boolean }) {
   const { top, bottom, studio } = opts;
@@ -33,6 +34,7 @@ export async function omniEdit(opts: {
   video: string; seconds: number; refs: string[]; prompt: string; out: string; resolution: "360p" | "720p" | "1080p";
 }): Promise<{ seconds: number; costUsd: number; outputTokens: number }> {
   if (!config.geminiKey) throw new Error("GEMINI_API_KEY is not set");
+  await assertOmniDuration(opts.video, opts.seconds);
   // Omni lives on the v1beta Interactions API (the JS SDK defaults to v1 and rejects text inputs there).
   const ai = new GoogleGenAI({ apiKey: config.geminiKey, apiVersion: "v1beta" });
   const t0 = Date.now();

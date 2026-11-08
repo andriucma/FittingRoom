@@ -15,6 +15,7 @@
     "start": "node scripts/dev.mjs --production",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs",
     "postinstall": "node scripts/copy-mediapipe.mjs"
   },
   "dependencies": {

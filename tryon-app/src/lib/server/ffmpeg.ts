@@ -32,6 +32,14 @@ export async function probeDuration(file: string): Promise<number> {
   return parseFloat(out);
 }
 
+async function probeVideoDuration(file: string): Promise<number> {
+  const raw = await run(config.ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "json", file]);
+  const streams = (JSON.parse(raw) as { streams?: { duration?: string }[] }).streams;
+  if (!streams?.length) throw new Error("The recording contains no video stream");
+  const duration = Number(streams[0].duration);
+  return Number.isFinite(duration) && duration > 0 ? duration : probeDuration(file);
+}
+
 /**
  * Hard-cut spin video from frames ordered by angle (each held 1/fps s), encoded at 30 fps.
  * The 0° frame is appended once at the very end so the turn closes (330° -> 0°) and the clip
@@ -46,16 +54,36 @@ export async function framesToVideo(frames: string[], out: string, fps = 3, loop
 }
 
 /**
- * Cut [start, end] to a WHOLE number of seconds (3–15) at 720x1280/30fps, no audio.
+ * Fit the complete [start, end] turn to WHOLE seconds (3–15), 720x1280/30fps, no audio.
  * Gemini Omni rejects edits whose input length differs from the requested duration.
  */
 export async function trimWholeSeconds(video: string, start: number, end: number, out: string): Promise<{ start: number; seconds: number }> {
-  const seconds = Math.max(3, Math.min(15, Math.ceil(end - start - 1e-6)));
-  const s = Math.max(0, end - seconds);
-  await run(config.ffmpeg, ["-v", "error", "-y", "-ss", s.toFixed(3), "-i", video,
-    "-vf", "scale=720:1280,fps=30", "-frames:v", String(seconds * 30), "-an",
-    "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", out]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error("Invalid video interval");
+  const available = await probeVideoDuration(video);
+  if (!Number.isFinite(available) || available <= 0 || start >= available) throw new Error("The recording has no usable video in that interval");
+  const finish = Math.min(end, available);
+  const begin = Math.max(0, start);
+  if (finish <= begin) throw new Error("The recording has no usable video in that interval");
+  const seconds = Math.max(3, Math.min(15, Math.ceil(finish - begin - 1e-6)));
+  const s = begin;
+  const speed = seconds / (finish - s);
+  // Preserve the entire turn: uniformly retime it instead of dropping the start
+  // or assuming rounding adds frames. Padding covers only frame-grid rounding.
+  await run(config.ffmpeg, ["-v", "error", "-y", "-ss", s.toFixed(6), "-i", video,
+    "-vf", `trim=duration=${(finish - s).toFixed(6)},setpts=(PTS-STARTPTS)*${speed.toFixed(12)},fps=30,tpad=stop_mode=clone:stop_duration=${seconds},trim=duration=${seconds},scale=720:1280`,
+    "-frames:v", String(seconds * 30), "-an", "-fps_mode", "cfr",
+    "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]);
+  await assertOmniDuration(out, seconds);
   return { start: s, seconds };
+}
+
+/** Fail locally, before upload/billing, if an external caller passes mismatched media. */
+export async function assertOmniDuration(video: string, seconds: number): Promise<void> {
+  if (!Number.isInteger(seconds) || seconds < 3 || seconds > 15) throw new Error("Smooth video duration must be a whole number from 3 to 15 seconds");
+  const actual = await probeVideoDuration(video);
+  if (!Number.isFinite(actual) || Math.round(actual * 10) !== seconds * 10) {
+    throw new Error(`Video preparation failed: expected ${seconds}s but encoded ${actual}s. Retry to prepare the recording again.`);
+  }
 }
 
 /** Side-by-side review video (left | right). */

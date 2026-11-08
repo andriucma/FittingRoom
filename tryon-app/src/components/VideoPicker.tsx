@@ -2,33 +2,66 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
-import type { VideoAsset } from "@/lib/types";
+import type { VideoAsset, VideoCheck } from "@/lib/types";
 
-export function VideoPicker({ value, onChange }: { value: string | null; onChange: (id: string) => void }) {
+export function recordingName(name: string) {
+  return /^capture-\d+\./.test(name) ? "Camera recording" : name.startsWith("sample:") ? "Sample recording" : name;
+}
+
+export function VideoPicker({ value, onChange, onReady, onBusyChange }: {
+  value: string | null; onChange: (id: string) => void;
+  onReady?: (video: VideoAsset) => void; onBusyChange?: (busy: boolean) => void;
+}) {
   const [videos, setVideos] = useState<VideoAsset[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     const abort = new AbortController();
-    fetch("/api/videos", { signal: abort.signal }).then((r) => r.json()).then((d) => {
-      setVideos(d.videos ?? []);
-      if (!value && d.videos?.[0]) onChange(d.videos[0].id);
-    }).catch((e) => { if (!abort.signal.aborted) setError(e.message); });
+    fetch("/api/videos", { signal: abort.signal }).then(async (r) => {
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Your recordings couldn’t load. Try uploading a video.");
+      if (!abort.signal.aborted) setVideos(data.videos ?? []);
+    }).catch((e) => { if (!abort.signal.aborted) setError(e.message); }).finally(() => { if (!abort.signal.aborted) setLoading(false); });
     return () => abort.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function add(req: Promise<Response>, label: string) {
-    setBusy(label); setError(null);
+  function save(video: VideoAsset) { setVideos((items) => [video, ...items.filter((v) => v.id !== video.id)]); }
+
+  async function choose(video: VideoAsset) {
+    setError(null); onChange(video.id); save(video);
+    if (video.check?.ok) { onReady?.(video); return; }
+    setBusy("check"); onBusyChange?.(true);
     try {
-      const res = await req; const v = await res.json();
-      if (!res.ok) throw new Error(v.error ?? res.statusText);
-      setVideos((vs) => [v, ...vs.filter((x) => x.id !== v.id)]); onChange(v.id);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+      const response = await fetch(`/api/videos/${video.id}/verify`, { method: "POST" });
+      const check = await response.json() as VideoCheck & { error?: string };
+      if (!response.ok) throw new Error(check.error ?? "We couldn’t check this turn. Please try again.");
+      const checked = { ...video, check }; save(checked); onReady?.(checked);
+      if (!check.ok) throw new Error(check.issues?.[0] ?? "This recording needs a full turn. Record again with your whole body in view.");
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(null); onBusyChange?.(false); }
   }
+
+  async function add(req: Promise<Response>, label: string) {
+    setBusy(label); setError(null); onBusyChange?.(true);
+    try {
+      const res = await req; const video = await res.json();
+      if (!res.ok) throw new Error(video.error ?? "We couldn’t upload that recording.");
+      await choose(video);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(null); onBusyChange?.(false); }
+  }
+
   const selected = videos.find((v) => v.id === value);
   return <div className="video-picker">
-    <div className="video-preview">{selected?.preview ? <video key={selected.id} src={selected.preview} muted autoPlay loop playsInline /> : <Icon name="spin" width="36" height="36" />}</div>
-    <div className="video-options"><p>Upload a video of yourself turning all the way around. Keep the camera still and your whole body in view.</p><div className="video-actions"><label className="fr-button dark" style={busy ? { pointerEvents: "none", opacity: .5 } : undefined}><Icon name="upload" width="16" height="16" />{busy === "upload" ? "Uploading…" : "Upload a video"}<input type="file" accept="video/*" className="sr-only" disabled={!!busy} onChange={(e) => { const f=e.target.files?.[0]; if (!f) return; const form=new FormData(); form.append("video",f); void add(fetch("/api/videos",{method:"POST",body:form}),"upload"); e.target.value=""; }} /></label><button className="fr-button" disabled={!!busy} onClick={() => void add(fetch("/api/videos/sample",{method:"POST"}),"sample")}>{busy === "sample" ? "Getting it ready…" : "Try a sample"}</button></div>{error && <p role="alert" className="notice error">{error}</p>}{videos.length > 0 && <div className="video-list" aria-label="Your recordings">{videos.map((v) => <button key={v.id} disabled={!!busy} aria-pressed={value === v.id} onClick={() => onChange(v.id)}>{v.name}<span className="muted"> · {new Date(v.createdAt).toLocaleDateString()}</span></button>)}</div>}</div>
+    <div className="video-preview">{selected?.preview ? <video key={selected.id} src={selected.preview} muted autoPlay loop playsInline aria-label="Selected recording preview" /> : <Icon name="spin" width="36" height="36" />}</div>
+    <div className="video-options">
+      <p>Choose a saved recording or upload a video of one full turn, with your whole body in view.</p>
+      <label className="fr-button dark" style={busy ? { pointerEvents: "none", opacity: .5 } : undefined}><Icon name="upload" width="16" height="16" />{busy === "upload" ? "Uploading…" : "Upload video"}<input type="file" accept="video/*" className="sr-only" disabled={!!busy} onChange={(e) => { const file=e.target.files?.[0]; if (!file) return; const form=new FormData(); form.append("video",file); void add(fetch("/api/videos",{method:"POST",body:form}),"upload"); e.target.value=""; }} /></label>
+      <p className="recording-status" role="status">{busy === "check" ? "Checking your full turn…" : selected?.check?.ok ? <><Icon name="check" width="14" height="14" /> Full turn checked · {selected.check.frames} angles</> : loading ? "Loading saved recordings…" : ""}</p>
+      {error && <p role="alert" className="notice error">{error}</p>}
+      {videos.length > 0 && <div className="video-list" aria-label="Saved recordings">{videos.map((v) => <button key={v.id} disabled={!!busy} aria-pressed={value === v.id} onClick={() => void choose(v)}><span>{recordingName(v.name)}</span><span className="muted">{new Date(v.createdAt).toLocaleDateString()} · {v.check?.ok ? "Ready" : "Check turn"}</span></button>)}</div>}
+      <details className="sample-option"><summary>Just trying it out?</summary><button className="text-link" disabled={!!busy} onClick={() => void add(fetch("/api/videos/sample",{method:"POST"}),"sample")}>{busy === "sample" ? "Loading sample…" : "Try a sample recording"}</button></details>
+    </div>
   </div>;
 }

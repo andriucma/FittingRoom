@@ -42,7 +42,12 @@ async function post<T>(route: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15 * 60_000),
   });
-  if (!res.ok) throw new Error(`local-models ${route} ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try { const body = JSON.parse(text); if (typeof body.detail === "string") detail = body.detail; } catch {}
+    throw new Error(route === "/garments/focus" ? detail : `local-models ${route} ${res.status}: ${detail}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -61,4 +66,6 @@ export const localModels = {
     post<FramingResult>("/framing/normalize", { frames, out_dir: outDir, target, sources }),
   segment: (image: string, prompt: string, out: string) =>
     post<{ found: boolean; score?: number; mask?: string; bbox?: number[] }>("/segment", { image, prompt, out }),
+  focusGarment: (image: string, prompt: string, outDir: string) =>
+    post<{ score: number; coverage: number; prompt: string; focus: string; reference: string; mask: string }>("/garments/focus", { image, prompt, out_dir: outDir }),
 };
