@@ -12,16 +12,21 @@ const KEEP = (top: string, bottom: string) =>
 export function omniPrompt(opts: { top: string; bottom: string; studio: boolean }) {
   const { top, bottom, studio } = opts;
   const refs = studio
-    ? "The first three reference images show the same person wearing the target outfit, from the front, the side and the back, in a photo studio. The last reference image is that empty studio."
-    : "The reference images show the same person wearing the target outfit from the front, the side and the back.";
+    ? "The first four reference images show the same person wearing the target outfit in a photo studio, seen from the front, one side, the back and the other side. The last reference image is that empty studio. The reference images show only what the outfit looks like; they are not poses, keyframes or stopping points."
+    : "The reference images show the same person wearing the target outfit, seen from the front, one side, the back and the other side. They show only what the outfit looks like; they are not poses, keyframes or stopping points.";
+  // The model otherwise under-rotates and parks on the last reference pose (the back) instead of
+  // tracking the input video, so the motion is pinned to the source explicitly and forcefully.
+  const motion = "Match the body's rotation to the input video exactly: at every moment the person must face the same direction as in the input video, turning at the same speed, and the clip must end with the person facing the camera again after one complete 360° turn — the same full turn as the input video. Keep turning smoothly and continuously from the first frame to the last. Never pause, stop, hold a pose, slow down, speed up or reverse, and never stop turning when the body happens to line up with a reference image. The person must not still be mid-turn or facing away when the clip ends.";
   const outfit = `Replace only the clothing, in every frame, with exactly the ${top} and ${bottom} in the reference images. Any print on the back must match the back reference exactly and be visible only while the back faces the camera; anything printed on the front is visible only while the front faces the camera. The garments must turn with the body naturally and look the same throughout the turn.`;
   const scene = studio
     ? "Replace the entire room (walls, doors, furniture, lamps, floor, cables and every object) with the empty studio from the last reference image: the same backdrop, floor and soft even studio lighting, with a soft shadow under the feet. Nothing from the room may remain. Relight the person to match the studio.\n\n"
     : "";
   const keepScene = studio
-    ? "Keep exactly as in the video: the face, hair, body, hands, the movement and its timing, the person's position and size in the frame, and the camera."
-    : "Keep everything else exactly as in the video: the face, hair, body, hands, the movement and its timing, the room, the lighting and the camera.";
+    ? "Keep exactly as in the video: the face, hair, body, hands, the person's position and size in the frame, and the camera."
+    : "Keep everything else exactly as in the video: the face, hair, body, hands, the room, the lighting and the camera.";
   return `Edit this video. It shows a person slowly turning a full circle in place. ${refs}
+
+${motion}
 
 ${outfit}
 

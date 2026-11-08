@@ -165,7 +165,9 @@ async function execute(s: RunState, videoFile: string) {
       const src = path.join(omniDir, "source.mp4");
       const { seconds } = await trimWholeSeconds(videoFile, turnStart, end, src);
       const nearest = (deg: number) => [...good].sort((a, b) => angDist(a.angle, deg) - angDist(b.angle, deg))[0];
-      const refs = [nearest(0), nearest(90), nearest(180)].map((f) => f.final!);
+      // Anchor the outfit all the way around the turn (front, both sides, back) so Omni has a
+      // reference for the whole 360° and doesn't stall on the back as the last pose it was given.
+      const refs = [nearest(0), nearest(90), nearest(180), nearest(270)].map((f) => f.final!);
       const out = path.join(omniDir, "omni.mp4");
       const r = await omniEdit({
         video: src, seconds, resolution: input.omni.resolution, out,

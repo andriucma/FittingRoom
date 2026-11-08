@@ -194,6 +194,65 @@ def measure(mask: np.ndarray) -> dict:
     return {"top": top, "bottom": bottom, "height": h, "cx": float(np.median(xs))}
 
 
+_pose = None                                      # MediaPipe Pose Landmarker (IMAGE mode), lazy
+_HEAD_LMS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)    # nose, eyes, ears, mouth → head line
+_FOOT_LMS = (27, 28, 29, 30, 31, 32)              # ankles, heels, foot index → feet line
+_TORSO_LMS = (11, 12, 23, 24)                     # shoulders, hips → body center-x
+
+
+def _pose_landmarker():
+    global _pose
+    if _pose is None:
+        import mediapipe as mp  # noqa: F401
+        from mediapipe.tasks.python import BaseOptions, vision
+        from . import angles
+        _pose = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(angles.model_path("pose_heavy"))),
+            running_mode=vision.RunningMode.IMAGE))
+    return _pose
+
+
+def _pose_measure(img: Image.Image) -> dict | None:
+    """Head-top, feet, height and center-x from MediaPipe pose landmarks (pixels), or None.
+
+    Steadier than a CLIPSeg ``person`` mask for the framing step (no contact shadow, no
+    dropped limbs), so the Windows path can equalise the person's size across angles the
+    way SAM 3 already does on the Mac. Used only off Apple Silicon — see ``_measure_subject``.
+    """
+    import mediapipe as mp
+
+    arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
+    h, w = arr.shape[:2]
+    try:
+        with _lock:
+            res = _pose_landmarker().detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=arr))
+    except Exception:
+        return None
+    if not res.pose_landmarks:
+        return None
+    lm = res.pose_landmarks[0]
+    top = min(lm[i].y for i in _HEAD_LMS) * h
+    bottom = max(lm[i].y for i in _FOOT_LMS) * h
+    if bottom <= top:
+        return None
+    cx = float(np.median([lm[i].x for i in _TORSO_LMS])) * w
+    return {"top": int(round(top)), "bottom": int(round(bottom)),
+            "height": float(bottom - top), "cx": cx, "score": 1.0}
+
+
+def _measure_subject(img: Image.Image, prompt: str) -> dict | None:
+    """Measure the subject for framing. Person off Apple Silicon → pose landmarks (with a
+    CLIPSeg fallback); everything else (incl. SAM 3 on the Mac) keeps the mask measurement."""
+    if prompt == "person" and backend() != "mlx":
+        pm = _pose_measure(img)
+        if pm is not None:
+            return pm
+    mask, score = segment(img, prompt)
+    if mask is None:
+        return None
+    return {**measure(mask), "score": round(score, 3)}
+
+
 def warp(img: Image.Image, src: dict, dst: dict) -> tuple[Image.Image, float]:
     """Scale about the feet so heights match, then move feet/center onto the target. Edges are extended."""
     s = dst["height"] / src["height"]
@@ -212,16 +271,16 @@ def normalize_framing(frames: list[Path], out_dir: Path, target: str = "median",
     imgs, boxes, src_boxes = [], [], []
     for i, f in enumerate(frames):
         img = Image.open(f).convert("RGB")
-        mask, score = segment(img, prompt)
-        if mask is None:
+        box = _measure_subject(img, prompt)
+        if box is None:
             raise ValueError(f"no '{prompt}' found in {f.name}")
         imgs.append(img)
-        boxes.append({**measure(mask), "score": round(score, 3)})
+        boxes.append(box)
         if target == "source":
             if not sources:
                 raise ValueError("target=source needs source frames")
-            smask, _ = segment(Image.open(sources[i]).convert("RGB").resize(img.size, Image.LANCZOS), prompt)
-            src_boxes.append(measure(smask))
+            sbox = _measure_subject(Image.open(sources[i]).convert("RGB").resize(img.size, Image.LANCZOS), prompt)
+            src_boxes.append(sbox)
 
     hs = np.array([b["height"] for b in boxes])
     common = {"height": float(hs.max() if target == "max" else np.median(hs)),
@@ -236,7 +295,7 @@ def normalize_framing(frames: list[Path], out_dir: Path, target: str = "median",
         outputs.append(str(out))
         per_frame.append({"file": str(out), "before": boxes[i], "scale": round(s, 4)})
 
-    after = [measure(segment(Image.open(o), prompt)[0]) for o in outputs]
+    after = [b for b in (_measure_subject(Image.open(o).convert("RGB"), prompt) for o in outputs) if b]
     H = imgs[0].size[1]
 
     def spread(bs, key):
