@@ -5,6 +5,7 @@ import type { PoseLandmarker } from "@mediapipe/tasks-vision";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { VideoOperation } from "@/lib/capture/videoOperation";
 import { FillSynth } from "@/lib/capture/fillSynth";
 import { bodyYaw, checkFraming, createPoseLandmarker, facingCamera, SKELETON, toCrop, TurnTracker } from "@/lib/capture/pose";
 import type { VideoAsset, VideoCheck } from "@/lib/types";
@@ -37,7 +38,9 @@ export function CaptureFlow() {
   const poseRef = useRef<PoseLandmarker | null>(null);
   const synthRef = useRef<FillSynth | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
+  const operation = useRef<VideoOperation | null>(null);
+  const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loop = useRef({ raf: 0, okSince: 0, facingSince: 0, recStart: 0, lastSeen: 0, lastGlugDeg: 0, lastChimeSeg: 0 });
   const tracker = useRef(new TurnTracker());
   const stageRef = useRef<Stage>("intro");
@@ -69,7 +72,19 @@ export function CaptureFlow() {
     synthRef.current?.stopBed();
   }, []);
 
-  useEffect(() => () => { stopCamera(); synthRef.current?.close(); poseRef.current?.close(); }, [stopCamera]);
+  const cancelWork = useCallback(() => {
+    operation.current?.cancel(); operation.current = null;
+    if (countdownTimer.current) clearInterval(countdownTimer.current);
+    if (finishTimer.current) clearTimeout(finishTimer.current);
+    countdownTimer.current = null; finishTimer.current = null;
+    const rec = recRef.current; recRef.current = null;
+    if (rec) { rec.onstop = null; rec.ondataavailable = null; if (rec.state !== "inactive") rec.stop(); }
+    stopCamera();
+  }, [stopCamera]);
+  useEffect(() => {
+    setStage("intro");
+    return () => { cancelWork(); synthRef.current?.close(); synthRef.current = null; poseRef.current?.close(); poseRef.current = null; };
+  }, [cancelWork, setStage]);
 
   // ---------- audio ----------
   async function enableSound() {
@@ -79,23 +94,27 @@ export function CaptureFlow() {
   }
 
   // ---------- recording ----------
-  const upload = useCallback(async (blob: Blob, mime: string) => {
+  const upload = useCallback(async (blob: Blob, mime: string, op: VideoOperation) => {
+    if (!op.active || operation.current !== op) return;
     setStage("uploading");
     const ext = mime.includes("mp4") ? "mp4" : "webm";
     const form = new FormData();
     form.append("video", new File([blob], `capture-${Date.now()}.${ext}`, { type: mime.split(";")[0] }));
     try {
-      const up = await fetch("/api/videos", { method: "POST", body: form });
+      const up = await op.fetch("/api/videos", { method: "POST", body: form });
       const v = await up.json();
+      if (!op.active || operation.current !== op) return;
       if (!up.ok) throw new Error(v.error ?? up.statusText);
       setVideo(v);
       setStage("verifying");
-      const vr = await fetch(`/api/videos/${v.id}/verify`, { method: "POST" });
+      const vr = await op.fetch(`/api/videos/${v.id}/verify`, { method: "POST" });
       const c = await vr.json();
+      if (!op.active || operation.current !== op) return;
       if (!vr.ok) throw new Error(c.error ?? vr.statusText);
       setCheck(c);
-      setStage("done");
+      setStage("done"); op.finish();
     } catch (e) {
+      if (!op.active || operation.current !== op) return;
       setError((e as Error).message);
       setStage("error");
     }
@@ -106,18 +125,23 @@ export function CaptureFlow() {
     if (!rec || rec.state === "inactive") return;
     synthRef.current?.complete();
     setMessage("Got it! Processing your spin…");
-    setTimeout(() => rec.state !== "inactive" && rec.stop(), 500); // a few frames past the finish
+    const op = operation.current;
+    finishTimer.current = setTimeout(() => { if (op?.active && operation.current === op && recRef.current === rec && rec.state !== "inactive") rec.stop(); }, 500); // a few frames past the finish
   }, []);
 
   const startRecording = useCallback(() => {
-    const stream = streamRef.current!;
+    const op = operation.current;
+    const stream = streamRef.current;
+    if (!op?.active || !stream || stageRef.current !== "countdown") return;
     const mime = pickMime();
     const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: 8_000_000 });
-    chunks.current = [];
-    rec.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
+    const parts: Blob[] = [];
+    rec.ondataavailable = (e) => { if (op.active && recRef.current === rec && e.data.size) parts.push(e.data); };
     rec.onstop = () => {
+      if (!op.active || operation.current !== op || recRef.current !== rec) return;
+      recRef.current = null;
       stopCamera();
-      void upload(new Blob(chunks.current, { type: rec.mimeType || mime }), rec.mimeType || mime || "video/webm");
+      void upload(new Blob(parts, { type: rec.mimeType || mime }), rec.mimeType || mime || "video/webm", op);
     };
     rec.start(250);
     if (testRef.current) void videoRef.current?.play();
@@ -136,17 +160,21 @@ export function CaptureFlow() {
     let n = 3;
     setCount(n);
     synthRef.current?.tick();
+    const op = operation.current;
+    if (!op?.active) return;
     const id = setInterval(() => {
+      if (!op.active || operation.current !== op) { clearInterval(id); return; }
       n -= 1;
       if (n > 0) {
         setCount(n);
         synthRef.current?.tick();
       } else {
-        clearInterval(id);
+        clearInterval(id); countdownTimer.current = null;
         synthRef.current?.tick(true);
         startRecording();
       }
     }, 900);
+    countdownTimer.current = id;
   }, [setStage, startRecording]);
 
   // ---------- per-frame analysis ----------
@@ -227,13 +255,14 @@ export function CaptureFlow() {
   useEffect(() => { analyzeRef.current = analyze; }, [analyze]);
 
   async function startCamera() {
-    stopCamera();
+    cancelWork();
+    const op = new VideoOperation(); operation.current = op;
     const session = cameraSession.current;
     setStage("starting");
     setError(null);
     setMessage("Starting your camera…");
     try {
-      const response = await fetch("/api/health");
+      const response = await op.fetch("/api/health");
       if (!response.ok) throw new Error("We couldn’t check recording setup. Please refresh and try again.");
       const health = await response.json();
       if (session !== cameraSession.current) return;
@@ -290,7 +319,7 @@ export function CaptureFlow() {
   }
 
   function reset() {
-    stopCamera();
+    cancelWork();
     setVideo(null);
     setCheck(null);
     setDegrees(0);
@@ -383,6 +412,7 @@ export function CaptureFlow() {
         <section className="capture-loader" aria-live="polite">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
           <p>{stage === "uploading" ? "Uploading your spin…" : "Checking your spin with the pose model…"}</p>
+          <button className="text-link" onClick={reset}>Cancel</button>
         </section>
       )}
 

@@ -94,7 +94,7 @@ def wrap180(a):
 def probe_times(video: Path) -> list[float]:
     """Presentation timestamps of every video frame (phone videos are often VFR)."""
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+        [os.environ.get("FFPROBE_PATH", "ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries",
          "frame=best_effort_timestamp_time", "-of", "csv=p=0", str(video)],
         capture_output=True, text=True, check=True).stdout
     ts = []
@@ -110,7 +110,7 @@ def probe_times(video: Path) -> list[float]:
 # --------------------------------------------------------------------------- #
 # 1. per-frame measurements
 # --------------------------------------------------------------------------- #
-def analyze(video: Path, w: int, h: int, pose_model: str):
+def analyze(video: Path, w: int, h: int, pose_model: str, include_landmarks: bool = False):
     import cv2
     import mediapipe as mp
     from mediapipe.tasks.python import BaseOptions, vision
@@ -126,7 +126,7 @@ def analyze(video: Path, w: int, h: int, pose_model: str):
         min_face_detection_confidence=0.3, min_face_presence_confidence=0.3))
 
     proc = subprocess.Popen(
-        ["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={w}:{h}",
+        [os.environ.get("FFMPEG_PATH", "ffmpeg"), "-v", "error", "-i", str(video), "-vf", f"scale={w}:{h}",
          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
     recs, i, nbytes = [], 0, w * h * 3
     while True:
@@ -150,6 +150,8 @@ def analyze(video: Path, w: int, h: int, pose_model: str):
                        yaw_raw=math.degrees(math.atan2(v[1], v[0])),
                        agree=float(np.linalg.norm(v) / 2),  # 1 = shoulders & hips agree
                        presence=float(lm[[L_SH, R_SH, L_HIP, R_HIP], 2].min()))
+            if include_landmarks:
+                rec["landmarks"] = lm[:, :2].tolist()
             # 2D shoulder width / torso length (signed: <0 means L is left of R in image)
             P = lm[:, :2] * [w, h]
             torso = np.linalg.norm((P[L_SH] + P[R_SH]) / 2 - (P[L_HIP] + P[R_HIP]) / 2)
@@ -169,6 +171,9 @@ def analyze(video: Path, w: int, h: int, pose_model: str):
         recs.append(rec)
         i += 1
     proc.wait()
+    proc.stdout.close()
+    pose.close()
+    face.close()
     return recs, fps
 
 
@@ -329,7 +334,7 @@ def write_frames(video, out, picks, w, h):
     tmp = out / "_tmp"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir()
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vf",
+    subprocess.run([os.environ.get("FFMPEG_PATH", "ffmpeg"), "-v", "error", "-y", "-i", str(video), "-vf",
                     f"select='{expr}',scale={w}:{h}", "-fps_mode", "passthrough",
                     "-q:v", "2", str(tmp / "%03d.jpg")], check=True)
     got = sorted(tmp.glob("*.jpg"))

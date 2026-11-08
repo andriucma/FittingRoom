@@ -1,10 +1,27 @@
 # RandomTryOn — Project Log
 
-Last updated: 2026-11-07 (web app, guided capture, store catalog + Decisions API, handoff)
+Last updated: 2026-11-08 (cancellation, synchronized comparisons and README)
 
 Living record of what we've built, tried, solved and ruled out. Keep this updated with every change: new scripts or flags, experiments, problems solved, models adopted or rejected.
 
 ---
+
+### Cancellation and README cleanup (2026-11-08)
+
+- Fixed countdown intervals and recorder stop callbacks reviving a cancelled camera attempt. Each attempt owns an operation ID/abort controller, local timers and recorder callbacks. Cancel and leaving capture stop the camera, detach callbacks, clear timers and cancel pending requests. Added Cancel during capture upload/verification and in the saved/uploaded recording picker. Late results cannot advance the UI or restore cancelled selections.
+- Added an explicit video-operation cancellation endpoint with cancellation tombstones for late requests. Signals propagate to ffmpeg, local pose verification and department detection. Aborted new uploads are removed; existing saved recordings/looks are retained.
+- Pose verification now runs in an isolated Python worker. Request disconnection terminates the worker and its decoder process tree (POSIX process group / Windows taskkill). New attempts are independent of cancelled ones.
+- Rewrote the main README with plain-language usage, architecture, Mac and Windows setup, environment configuration, troubleshooting and tests. Consolidated the app README into a developer reference and removed the old handoff file. Corrected the environment template's copy destination.
+- Validation: production build, thirteen Node tests and nine Python tests passed. Tests include actual ffmpeg cancellation, late-request cancellation, operation isolation and stopping a worker's decoder child. Browser checks passed for countdown, active recorder, upload, verification, leaving capture, saved-recording checking and picker upload cancellation, with no stale transitions or browser errors. The live API stopped active verification, rejected a late cancelled request and verified a fresh attempt with 12 angles. The desktop/390px/320px successful fitting flow also passed. No paid generation was invoked.
+
+### Pose-synchronized comparisons (2026-11-08)
+
+- Found equal four-second source/Gemini clips with 30/24 fps; the old hstack produced irregular ~48 fps comparison output. Equal durations did not mean equal body poses, and the generated clips omitted the final part of the original turn.
+- Added local heavy MediaPipe pose analysis, torso-normalized landmark and front/back orientation matching, monotone dynamic time warping with a bounded time window, smoothed frame selection, and fixed 30 fps comparison encoding. Both sides share the original recording's clock. Comparison files use only the longest continuous interval of shared poses (25° smoothed tolerance); missing generated motion is excluded instead of displaying a drifting ending. Full original and generated videos remain untouched.
+- New `/videos/synchronize` Python endpoint, cached pose measurements and versioned `omni/sync.json` diagnostics. If poses cannot be matched, explicitly record a timing-only fallback. Comparison replacement is atomic. Environment ffmpeg/ffprobe overrides are respected by analysis and encoding.
+- New runs synchronize automatically. Persist the paid Gemini output and its cost before local comparison processing; a failed comparison retry reuses it without calling Gemini again.
+- Rebuilt all three available comparisons locally. Model-estimated median orientation error on compared intervals is 1.74°, 3.10°, 2.22°; durations are 2.93s, 3.57s, 3.33s at 30 fps. The excluded endings are 1.07s, 0.43s, 0.67s respectively. These are model estimates, not guarantees of identical generated motion. No cloud generation was invoked.
+- Validation: ten Node tests and seven Python tests passed, including nonlinear timing, different frame rates/durations, missing poses, unmatchable endings, source-file preservation, caching and local-only retry after a comparison failure. Encoded saved clips were probed and contact sheets inspected.
 
 ### Decorative UI cleanup (2026-11-07)
 
@@ -327,7 +344,7 @@ All try-on runs: `gpt-image-2.6-flare`, `quality=medium`, `864x1536`, no anchor 
     - `/runs/[id]` needed `<Suspense>` for `useParams` under Cache Components, otherwise `next build` fails prerendering.
     - `turbopackIgnore` on the data-dir path so the build doesn't trace the whole project.
     - Stale Turbopack module after a route rename (`id.includes is not a function`): touch the file.
-- **Handoff (2026-11-07):** `HANDOFF.md` and `.env.example` at the repo root; zip without keys, deps, venvs, data or work outputs.
+- **Handoff (2026-11-07):** Initial setup notes and `.env.example` at the repo root; setup notes are now consolidated into `README.md`. The original zip excluded keys, deps, venvs, data and work outputs.
 
 ---
 

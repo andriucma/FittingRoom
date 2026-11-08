@@ -16,9 +16,10 @@ type Question =
   | { type: "predicate"; name: string; instructions: string | Part[] };
 type Answer = { name: string; type: string; choice?: string; confidence?: number; probability?: number };
 
-async function decide(input: unknown, questions: Question[]) {
+async function decide(input: unknown, questions: Question[], signal?: AbortSignal) {
+  signal?.throwIfAborted();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const d: any = await client().decisions.create({ model: MODEL, input, questions } as any);
+  const d: any = await client().decisions.create({ model: MODEL, input, questions } as any, { signal });
   const answers = Object.fromEntries((d.answers as Answer[]).map((a) => [a.name, a]));
   const costUsd = ((d.usage?.input_tokens ?? 0) * PRICE_PER_M_INPUT) / 1e6;
   return { answers, costUsd };
@@ -121,7 +122,8 @@ export type ShopperDepartment = { department: "mens" | "womens" | "all"; confide
  * This only picks which catalog section to show first; it is shown to the user and always overridable.
  * Low confidence falls back to showing everything.
  */
-export async function shopperDepartment(frame: string, minConfidence = 0.8): Promise<ShopperDepartment> {
+export async function shopperDepartment(frame: string, minConfidence = 0.8, signal?: AbortSignal): Promise<ShopperDepartment> {
+  signal?.throwIfAborted();
   const b64 = (await readFile(frame)).toString("base64");
   const { answers, costUsd } = await decide(
     [{ role: "user", content: [
@@ -137,6 +139,7 @@ export async function shopperDepartment(frame: string, minConfidence = 0.8): Pro
         { value: "either", description: "Unclear; show both departments" },
       ],
     }],
+    signal,
   );
   const a = answers.department;
   const choice = a?.choice === "mens" || a?.choice === "womens" ? a.choice : "all";

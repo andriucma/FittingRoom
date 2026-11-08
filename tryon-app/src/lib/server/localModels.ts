@@ -35,12 +35,12 @@ export type FramingResult = {
   seconds: number;
 };
 
-async function post<T>(route: string, body: unknown): Promise<T> {
+async function post<T>(route: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${config.localModelsUrl}${route}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15 * 60_000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)]) : AbortSignal.timeout(15 * 60_000),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -52,6 +52,8 @@ async function post<T>(route: string, body: unknown): Promise<T> {
 }
 
 export const localModels = {
+  synchronizeVideos: (source: string, generated: string, comparison: string, report: string) =>
+    post<{ method: "pose-dtw" | "timing-only"; reason: string | null; fps: number; duration: number }>("/videos/synchronize", { source, generated, comparison, report }),
   async health(): Promise<{ ok: boolean; sam3_loaded?: boolean; error?: string }> {
     try {
       const r = await fetch(`${config.localModelsUrl}/health`, { signal: AbortSignal.timeout(3000) });
@@ -60,8 +62,8 @@ export const localModels = {
       return { ok: false, error: `unreachable at ${config.localModelsUrl}: ${(e as Error).message}` };
     }
   },
-  extractAngles: (video: string, outDir: string, stepDeg: number) =>
-    post<AnglesResult>("/angles/extract", { video, out_dir: outDir, step_deg: stepDeg }),
+  extractAngles: (video: string, outDir: string, stepDeg: number, signal?: AbortSignal) =>
+    post<AnglesResult>("/angles/extract", { video, out_dir: outDir, step_deg: stepDeg }, signal),
   normalizeFraming: (frames: string[], outDir: string, target: "median" | "max" | "source" = "median", sources?: string[]) =>
     post<FramingResult>("/framing/normalize", { frames, out_dir: outDir, target, sources }),
   segment: (image: string, prompt: string, out: string) =>

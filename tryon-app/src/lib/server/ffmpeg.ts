@@ -4,17 +4,18 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
 
-function run(bin: string, args: string[]): Promise<string> {
+function run(bin: string, args: string[], signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], signal });
+    let failure: Error | undefined;
     let out = "";
     let err = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));
-    p.on("error", (error: NodeJS.ErrnoException) => reject(error.code === "ENOENT"
-      ? new Error("Video processing is not set up on this computer. Install ffmpeg and ffprobe, then restart the app.")
-      : error));
-    p.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`${bin} exited ${code}: ${err.slice(-800)}`))));
+    p.on("error", (error: NodeJS.ErrnoException) => { failure = error.code === "ENOENT"
+      ? new Error("Video processing is not set up on this computer. Install ffmpeg and ffprobe, then restart the app.") : error; });
+    p.on("close", (code) => failure ? reject(failure) : code === 0 ? resolve(out) : reject(new Error(`${bin} exited ${code}: ${err.slice(-800)}`)));
   });
 }
 
@@ -89,14 +90,14 @@ export async function assertOmniDuration(video: string, seconds: number): Promis
 /** Side-by-side review video (left | right). */
 export async function sideBySide(left: string, right: string, out: string): Promise<void> {
   await run(config.ffmpeg, ["-v", "error", "-y", "-i", left, "-i", right, "-filter_complex",
-    "[0]scale=540:960,setsar=1[a];[1]scale=540:960,setsar=1[b];[a][b]hstack=shortest=1,format=yuv420p",
+    "[0:v]setpts=PTS-STARTPTS,fps=30,scale=540:960,setsar=1,settb=AVTB,setpts=N/(30*TB)[a];[1:v]setpts=PTS-STARTPTS,fps=30,scale=540:960,setsar=1,settb=AVTB,setpts=N/(30*TB)[b];[a][b]hstack=shortest=1,format=yuv420p",
     "-an", "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart", out]);
 }
 
 /** Re-encode any uploaded video to a web-safe H.264 MP4 preview. */
-export async function webPreview(video: string, out: string): Promise<void> {
+export async function webPreview(video: string, out: string, signal?: AbortSignal): Promise<void> {
   await run(config.ffmpeg, ["-v", "error", "-y", "-i", video, "-vf", "scale=-2:960,format=yuv420p",
-    "-an", "-c:v", "libx264", "-crf", "23", "-movflags", "+faststart", out]);
+    "-an", "-c:v", "libx264", "-crf", "23", "-movflags", "+faststart", out], signal);
 }
 
 /**
@@ -104,8 +105,8 @@ export async function webPreview(video: string, out: string): Promise<void> {
  * are landscape and the capture UI keeps the person inside the 9:16 guide), 1080x1920, 30 fps, no audio.
  * Also fixes browser MediaRecorder WebM files that lack duration metadata.
  */
-export async function normalizePortrait(video: string, out: string): Promise<void> {
+export async function normalizePortrait(video: string, out: string, signal?: AbortSignal): Promise<void> {
   await run(config.ffmpeg, ["-v", "error", "-y", "-i", video, "-vf",
     "crop='if(gt(iw/ih,9/16),trunc(ih*9/16/2)*2,iw)':'if(gt(iw/ih,9/16),ih,trunc(iw*16/9/2)*2)',scale=1080:1920,fps=30,format=yuv420p",
-    "-an", "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart", out]);
+    "-an", "-c:v", "libx264", "-crf", "18", "-movflags", "+faststart", out], signal);
 }

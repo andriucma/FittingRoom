@@ -4,6 +4,7 @@
   POST /angles/extract         MediaPipe Pose: pick frames by body rotation angle
   POST /framing/normalize      SAM 3: same person scale/position in every frame
   POST /segment                SAM 3: text-prompted mask + bbox
+  POST /videos/synchronize     pose matching + fixed-rate side-by-side comparison
 
 All paths are absolute and must live under TRYON_DATA_DIR (shared with the Next.js app).
 Run: uvicorn tryon_local.server:app --port 8001   (scripts/dev.mjs does this for you)
@@ -14,10 +15,10 @@ import os
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import angles, segmentation
+from . import angles, segmentation, synchronization, verification
 
 DATA_DIR = Path(os.environ.get("TRYON_DATA_DIR", Path(__file__).resolve().parents[2] / "data")).resolve()
 app = FastAPI(title="tryon-local-models")
@@ -57,6 +58,13 @@ class GarmentReq(BaseModel):
     out_dir: str
 
 
+class SynchronizeReq(BaseModel):
+    source: str
+    generated: str
+    comparison: str
+    report: str
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "data_dir": str(DATA_DIR),
@@ -64,12 +72,13 @@ def health():
 
 
 @app.post("/angles/extract")
-def extract_angles(req: AnglesReq):
+async def extract_angles(req: AnglesReq, request: Request):
     video = safe(req.video)
     if not video.is_file():
         raise HTTPException(404, "video not found")
     t0 = time.time()
-    meta = angles.extract(video, safe(req.out_dir), req.step_deg, req.size, viz=True)
+    meta = await verification.run_worker({"video": str(video), "out_dir": str(safe(req.out_dir)),
+                                          "step_deg": req.step_deg, "size": req.size}, request.is_disconnected)
     return {**meta, "seconds": round(time.time() - t0, 1)}
 
 
@@ -87,6 +96,18 @@ def normalize(req: FramingReq):
 @app.post("/segment")
 def segment(req: SegmentReq):
     return segmentation.segment_to_file(safe(req.image), req.prompt, safe(req.out))
+
+
+@app.post("/videos/synchronize")
+def synchronize_videos(req: SynchronizeReq):
+    source, generated = safe(req.source), safe(req.generated)
+    comparison, report = safe(req.comparison), safe(req.report)
+    if not source.is_file() or not generated.is_file():
+        raise HTTPException(404, "Comparison video not found")
+    try:
+        return synchronization.synchronize(source, generated, comparison, report)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
 
 
 @app.post("/garments/focus")

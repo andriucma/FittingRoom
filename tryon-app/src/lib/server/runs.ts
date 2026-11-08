@@ -1,7 +1,7 @@
 import "server-only";
 import { readdir, rename } from "node:fs/promises";
 import path from "node:path";
-import { framesToVideo, sideBySide, trimWholeSeconds } from "./ffmpeg";
+import { framesToVideo, trimWholeSeconds } from "./ffmpeg";
 import { localModels } from "./localModels";
 import { omniEdit, omniPrompt } from "./omni";
 import { importProduct } from "./shopify";
@@ -154,32 +154,35 @@ async function execute(s: RunState, videoFile: string) {
     current = "omni";
     if (!input.omni.enabled) {
       await s.step("omni", { status: "skipped" });
-    } else if (s.run.outputs.omni) {
-      // resume: already rendered
     } else {
-      await s.step("omni", { status: "running", detail: "trimming the turn and calling Gemini Omni" });
+      await s.step("omni", { status: "running", detail: "preparing your smooth video" });
       const omniDir = await ensureDir(path.join(dir, "omni"));
-      const track = angles.track;
-      const turnStart = Math.max(0, (track.find((p) => p.angle_deg > 2)?.t ?? 0) - 0.2);
-      const end = track.at(-1)!.t + 1 / angles.fps;
       const src = path.join(omniDir, "source.mp4");
-      const { seconds } = await trimWholeSeconds(videoFile, turnStart, end, src);
-      const nearest = (deg: number) => [...good].sort((a, b) => angDist(a.angle, deg) - angDist(b.angle, deg))[0];
-      const refs = [nearest(0), nearest(90), nearest(180)].map((f) => f.final!);
-      const out = path.join(omniDir, "omni.mp4");
-      const r = await omniEdit({
-        video: src, seconds, resolution: input.omni.resolution, out,
-        refs: plate ? [...refs, plate] : refs,
-        prompt: omniPrompt({ top: topRefs.noun, bottom: bottomRefs.noun, studio: !!plate }),
-      });
-      const compare = path.join(omniDir, "compare.mp4");
-      await sideBySide(src, out, compare);
-      await s.update((run) => {
-        run.outputs.omni = out;
-        run.outputs.omniCompare = compare;
-        run.cost.geminiUsd += r.costUsd;
-      });
-      await s.step("omni", { status: "done", detail: `${seconds}s ${input.omni.resolution} in ${r.seconds.toFixed(0)}s` });
+      let out = s.run.outputs.omni;
+      if (!out) {
+        const track = angles.track;
+        const turnStart = Math.max(0, (track.find((p) => p.angle_deg > 2)?.t ?? 0) - 0.2);
+        const end = track.at(-1)!.t + 1 / angles.fps;
+        const { seconds } = await trimWholeSeconds(videoFile, turnStart, end, src);
+        const nearest = (deg: number) => [...good].sort((a, b) => angDist(a.angle, deg) - angDist(b.angle, deg))[0];
+        const refs = [nearest(0), nearest(90), nearest(180)].map((f) => f.final!);
+        out = path.join(omniDir, "omni.mp4");
+        const r = await omniEdit({
+          video: src, seconds, resolution: input.omni.resolution, out,
+          refs: plate ? [...refs, plate] : refs,
+          prompt: omniPrompt({ top: topRefs.noun, bottom: bottomRefs.noun, studio: !!plate }),
+        });
+        // Persist the paid result before local post-processing. A comparison retry never re-bills Gemini.
+        const generated = out;
+        await s.update((run) => { run.outputs.omni = generated; run.cost.geminiUsd += r.costUsd; });
+      }
+      if (!s.run.outputs.omniCompare) {
+        await s.step("omni", { status: "running", detail: "matching the comparison to your movement" });
+        const compare = path.join(omniDir, "compare.mp4");
+        const sync = await localModels.synchronizeVideos(src, out, compare, path.join(omniDir, "sync.json"));
+        await s.update((run) => { run.outputs.omniCompare = compare; });
+        await s.step("omni", { status: "done", detail: `${sync.duration}s ${input.omni.resolution} · ${sync.method}` });
+      } else await s.step("omni", { status: "done" });
     }
     await s.update((r) => { r.status = "done"; });
   } catch (e) {
