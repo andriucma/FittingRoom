@@ -1,6 +1,16 @@
-"""SAM 3 text-prompted segmentation (MLX, 8-bit) and person-framing normalization."""
+"""Text-prompted segmentation and person-framing normalization.
+
+Two interchangeable backends sit behind the public ``segment()`` API:
+
+  * **mlx**  — SAM 3 (MLX, 8-bit) on Apple Silicon. The original, highest-quality path.
+  * **clipseg** — CLIPSeg (PyTorch, CPU) used wherever MLX can't load, e.g. Windows / Linux.
+
+The backend is picked once, automatically, by whether Apple's ``mlx`` runs here, so the
+Mac keeps using SAM 3 unchanged while other platforms fall back to CLIPSeg.
+"""
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -8,8 +18,32 @@ import numpy as np
 from PIL import Image
 
 SAM3_MODEL = "mlx-community/sam3-8bit"
-_lock = threading.Lock()          # MLX predictor isn't safe to call from several threads at once
-_predictor = None
+CLIPSEG_MODEL = "CIDAS/clipseg-rd64-refined"
+_lock = threading.Lock()          # neither backend is safe to call from several threads at once
+_predictor = None                 # MLX SAM 3 (Apple Silicon)
+_clipseg = None                   # (processor, model) tuple for the CPU fallback
+_backend: str | None = None       # "mlx" or "clipseg", decided once
+
+
+def _mlx_available() -> bool:
+    """True only where Apple's MLX native library actually loads (Apple Silicon)."""
+    try:
+        import mlx.core  # noqa: F401  # the Metal-backed core DLL is absent off Apple Silicon
+        return True
+    except Exception:
+        return False
+
+
+def backend() -> str:
+    global _backend
+    if _backend is None:
+        _backend = "mlx" if _mlx_available() else "clipseg"
+    return _backend
+
+
+def loaded() -> bool:
+    """Whether the active backend's model is resident in memory yet."""
+    return _predictor is not None or _clipseg is not None
 
 
 def predictor():
@@ -24,8 +58,21 @@ def predictor():
     return _predictor
 
 
-def segment(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
-    """Mask (H, W) bool of the main instance for `prompt` (largest score x area) and its score."""
+def _clipseg_model():
+    global _clipseg
+    if _clipseg is None:
+        import torch
+        from transformers import CLIPSegForImageSegmentation, CLIPSegProcessor
+
+        processor = CLIPSegProcessor.from_pretrained(CLIPSEG_MODEL)
+        model = CLIPSegForImageSegmentation.from_pretrained(CLIPSEG_MODEL)
+        model.eval()
+        torch.set_num_threads(max(1, os.cpu_count() or 1))
+        _clipseg = (processor, model)
+    return _clipseg
+
+
+def _segment_mlx(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
     with _lock:
         r = predictor().predict(img.convert("RGB"), text_prompt=prompt)
     if len(r.scores) == 0:
@@ -33,6 +80,37 @@ def segment(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
     areas = r.masks.reshape(len(r.scores), -1).sum(1)
     i = int(np.argmax(r.scores * areas))
     return r.masks[i].astype(bool), float(r.scores[i])
+
+
+def _segment_clipseg(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
+    import torch
+
+    processor, model = _clipseg_model()
+    rgb = img.convert("RGB")
+    with _lock:
+        inputs = processor(text=[prompt], images=[rgb], return_tensors="pt")
+        with torch.no_grad():
+            logits = model(**inputs).logits            # (H', W') heatmap for the one prompt
+        prob = torch.sigmoid(logits).squeeze().to(torch.float32).cpu().numpy()
+    # Upsample the low-res heatmap back to the source resolution.
+    prob_full = np.asarray(
+        Image.fromarray((np.clip(prob, 0, 1) * 255).astype(np.uint8)).resize(rgb.size, Image.BILINEAR),
+        dtype=np.float32,
+    ) / 255.0
+    peak = float(prob_full.max())
+    if peak < 0.40:                                    # nothing matched the prompt with any confidence
+        return None, 0.0
+    # Threshold relative to the peak so a weak-but-real garment still fills out,
+    # without dragging in low-confidence background.
+    mask = prob_full >= max(0.40, 0.5 * peak)
+    if not mask.any():
+        return None, 0.0
+    return mask, peak
+
+
+def segment(img: Image.Image, prompt: str) -> tuple[np.ndarray | None, float]:
+    """Mask (H, W) bool of the best instance for `prompt`, and a 0..1 confidence score."""
+    return _segment_mlx(img, prompt) if backend() == "mlx" else _segment_clipseg(img, prompt)
 
 
 def measure(mask: np.ndarray) -> dict:

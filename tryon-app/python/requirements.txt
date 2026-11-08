@@ -1,8 +1,13 @@
-# Local-models service (Python 3.12, Apple Silicon for SAM 3 / MLX)
+# Local-models service (Python 3.12)
+#   Apple Silicon uses SAM 3 via MLX; other platforms fall back to CLIPSeg on PyTorch (CPU).
 mediapipe>=1.2
-mlx-vlm>=0.7.12
 fastapi>=0.162
 uvicorn[standard]
 pillow
 numpy
 matplotlib
+# Segmentation backend — SAM 3 / MLX on Apple Silicon only...
+mlx-vlm>=0.7.12; platform_system == "Darwin"
+# ...CLIPSeg (PyTorch, CPU) everywhere else (Windows / Linux).
+torch; platform_system != "Darwin"
+transformers; platform_system != "Darwin"

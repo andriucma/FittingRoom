@@ -59,7 +59,8 @@ class GarmentReq(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "data_dir": str(DATA_DIR), "sam3_loaded": segmentation._predictor is not None}
+    return {"ok": True, "data_dir": str(DATA_DIR),
+            "segmenter": segmentation.backend(), "sam3_loaded": segmentation.loaded()}
 
 
 @app.post("/angles/extract")
